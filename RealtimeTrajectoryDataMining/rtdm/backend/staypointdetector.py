@@ -23,13 +23,12 @@ from sklearn.neighbors import BallTree  # pip install scikit-learn
 
 
 # Internally used class for collecting common functions across classes
-# - reducing duplicate code...
 class _BaseStayPointDetector:
     def __init__(
         self,
         radius: float,
         reference_user: str,
-        min_weight: int = 0,
+        min_weight: float = 0,  # In seconds
         percentile: Union[None, int] = None,
         trajectory_uids: Union[None, List[str]] = None,
     ) -> None:
@@ -37,28 +36,35 @@ class _BaseStayPointDetector:
         Initialize and set given class variables on class instantiation.
 
         Args:
-            percentile (int): A percentile threshold for filtering out \
-                insignificant stay points. The value should be between 0 and \
-                100.
             radius (float): The max distance at which another datapoint is \
                 considered a neighbour. The radius is assumed to be given in \
                 meters.
+            reference_user (str): A unique identifer of a user.
+            min_weight (int, optional): A weight threshold \
+                for filtering out insignificant stay points. Defaults to 0.
+            percentile (Union[None, int], optional): A percentile threshold \
+                for filtering out insignificant stay points. The value should \
+                be between 0 and 100. It can be used instead of 'min_weight'. \
+                Defaults to None.
+            trajectory_uids (Union[None, List[str]], optional): A list of \
+                unique identifiers of trajectories that specify the \
+                trajectories that should be used. Defaults to None.
         """
         self.reference_user = reference_user
         if trajectory_uids is None:
-            self.trajectory_uids = []
+            self.trajectory_uids: List[str] = []
         else:
             self.trajectory_uids = trajectory_uids
         # Set a percentile threshold for filtering out insignificant stay
-        # points
+        # points. Can be used instead of a 'min_weight'.
         self.percentile = percentile
         # Set the max distance at which another datapoint is considered a
         # neighbour
         self.radius = radius / settings.EARTH_RADIUS
         self.min_weight = min_weight
-        # Dataframe containing significant stay points, i.e., locations where an
-        # entity has spent a significant amount of time compared to other stay
-        # points
+        # Dataframe containing significant stay points, i.e., locations where
+        # an entity has spent a significant amount of time compared to other
+        # stay points
         self._df: pd.DataFrame = None
         # Validate input arguments
         self._check_vars()
@@ -74,7 +80,6 @@ class _BaseStayPointDetector:
         raise NotImplementedError("Missing implementation in subclass!")
 
     @abstractmethod
-    # TODO: Determine function return type
     def extract_geofences(
         self, datapoints: List[ds.DataPoint], **kwargs: Any,
     ) -> List[Polygon]:
@@ -90,10 +95,10 @@ class _BaseStayPointDetector:
 
         Args:
             bbox (List[float]): The bounding box of the geospatial area that \
-                was queried.
+                is to be queried for polygons.
 
         Returns:
-            Union[Tuple[None, None], Tuple[List[Polygon], List[int]]]:: A list \
+            Union[Tuple[None, None], Tuple[List[Polygon], List[int]]]: A list \
                 of requested polygons or None.
         """
         # This method should be implemented in a subclass
@@ -103,7 +108,7 @@ class _BaseStayPointDetector:
         self, multiplier: float = 25,
     ) -> Union[Tuple[None, None], Tuple[List[Polygon], List[int]]]:
         """
-        Create geofenced reginos around certain locations.
+        Create geofenced regions around certain locations.
 
         Args:
             multiplier (float): Increase the size of the geofences \
@@ -116,17 +121,15 @@ class _BaseStayPointDetector:
         """
         if self._df is None:
             logging.warning(
-                "Function: '"
-                + self.create_geofencing.__name__
-                + "'. Problem: "
-                + "The '.fit()' method needs to be called first!"
+                f"Function: '{self.create_geofencing.__name__}'. \
+                Problem: The '.fit()' method needs to be called first!"
             )
             return None, None
         else:
             geometries = []
             labels = []
             grouped_df = self._df.groupby("label")
-            # Extract all datapoints and their corresponding latitude and
+            # Extract all datapoints and their corresponding latitude/
             # longitude coordinates from each cluster
             for key, _ in grouped_df:
                 values = grouped_df.get_group(key)
@@ -145,12 +148,35 @@ class _BaseStayPointDetector:
 
     def plot(
         self,
-        center: Union[None, CoordinatePair] = None,
         color: Union[None, str] = None,
         radius: float = 5.0,
         opacity: float = 1,
+        center: Union[None, CoordinatePair] = None,
         map_: Union[None, folium.Map] = None,
     ) -> folium.Map:
+        """
+        Plot the geofenced regions on a map.
+
+        Args:
+            color (str): The color the geofenced regions are plotted with.
+            radius (float, optional): The radius the circle markers are \
+                plotted with. The circle markers indicate the midpoint of \
+                the geofenced regions. Defaults to 2.0.
+            opacity (float, optional):  The opacity the datapoint is plotted \
+                with. Defaults to 1.0.
+            center (Union[None, CoordinatePair], optional): A \
+                latitude/longitude coordinate pair that determines the \
+                centering of the map which geospatial data is plotted on.
+            map_ (Union[None, folium.Map], optional): A folium map object. \
+                Defaults to None.
+
+        Raises:
+            ValueError: If either a 'map_' or 'center' function argument is \
+                missing.
+
+        Returns:
+            Union[None, folium.Map]: A 'folium.Map' object.
+        """
         if self._df is None:
             logging.warning(
                 f"Function: '{self.plot.__name__}'. Problem: The '.fit()' \
@@ -175,7 +201,7 @@ class _BaseStayPointDetector:
                 else:
                     _color = row[3]
                 folium.CircleMarker(
-                    # Latitude, longitude coordinates of the marker
+                    # Latitude, longitude coordinates of the cirlc  marker
                     [row[1], row[2]],
                     # The radius (in pixels!) of the circle marker
                     radius=radius,
@@ -200,6 +226,19 @@ class _BaseStayPointDetector:
         bw_adjust: float = 0.75,
         boxcox: bool = False,
     ) -> None:
+        """
+        Plot the weight distribution of the weights assigned to stay points.
+
+        Args:
+            stay_points (List[ds.DataPoint]): A list of stay points. These are \
+                essentially just represented by datapoints with weights.
+            bw_adjust (float, optional): The bandwidth used for density \
+                estimation.  Defaults to 0.75.
+            boxcox (bool, optional): Specify if a box-cox transformation of \
+                the data should be plotted (makes exponentially distributed \
+                normal distributed for easier inspection and analysis). \
+                Defaults to False.
+        """
         df = self._create_stay_point_df(stay_points)
         if boxcox:
             df["weight"], _ = stats.boxcox(df["weight"].values.ravel())
@@ -263,7 +302,7 @@ class _BaseStayPointDetector:
         community_midpoints: Dict[str, Any],
     ) -> pd.DataFrame:
         """
-        Merge extra relevant data into a given dataframe.
+        Merge extra relevant data into a given Pandas dataframe.
 
         Args:
             df (pd.DataFrame): The dataframe we want to merge all the extra \
@@ -276,7 +315,7 @@ class _BaseStayPointDetector:
 
         Returns:
             pd.DataFrame: The given dataframe enriched with the extra data \
-                that was also given as input to the method.
+                that was also given as input to the function.
         """
         labels = []
         index = []
@@ -479,7 +518,7 @@ class StayPointDetector(_BaseStayPointDetector):
         self,
         radius: float,
         reference_user: str,
-        min_weight: int = 0,
+        min_weight: float = 0.0,
         percentile: Union[None, int] = None,
         trajectory_uids: Union[None, List[str]] = None,
         **kwargs: Any,
@@ -488,12 +527,19 @@ class StayPointDetector(_BaseStayPointDetector):
         Initialize and set given class variables on class instantiation.
 
         Args:
-            percentile (int): A percentile threshold for filtering out \
-                insignificant stay points. The value should be between 0 and \
-                100.
             radius (float): The max distance at which another datapoint is \
                 considered a neighbour. The radius is assumed to be given in \
                 meters.
+            reference_user (str): A unique identifer of a user.
+            min_weight (float , optional): A weight threshold \
+                for filtering out insignificant stay points. Defaults to 0.
+            percentile (Union[None, int], optional): A percentile threshold \
+                for filtering out insignificant stay points. The value should \
+                be between 0 and 100. It can be used instead of 'min_weight'. \
+                Defaults to None.
+            trajectory_uids (Union[None, List[str]], optional): A list of \
+                unique identifiers of trajectories that specify the \
+                trajectories that should be used. Defaults to None.
         """
         kwargs.setdefault("namespace", type(self).__name__)
         self._geohelper = _GeoHelper(**kwargs)
@@ -592,7 +638,7 @@ class RedisStayPointDetector(_BaseStayPointDetector, _RedisGeoHelper):
         self,
         radius: float,
         reference_user: str,
-        min_weight: int = 0,
+        min_weight: float = 0.0,  # In seconds
         percentile: Union[None, int] = None,
         trajectory_uids: Union[None, List[str]] = None,
         **kwargs: Any,
@@ -601,11 +647,19 @@ class RedisStayPointDetector(_BaseStayPointDetector, _RedisGeoHelper):
         Initialize and set given class variables on class instantiation.
 
         Args:
-            percentile (int): A percentile threshold for filtering out stay \
-                points. The value should be between 0 and 100.
             radius (float): The max distance at which another datapoint is \
-                considered a neighbour. The radius is assumed to be given \
-                in meters.
+                considered a neighbour. The radius is assumed to be given in \
+                meters.
+            reference_user (str): A unique identifer of a user.
+            min_weight (int, optional): A weight threshold \
+                for filtering out insignificant stay points. Defaults to 0.
+            percentile (Union[None, int], optional): A percentile threshold \
+                for filtering out insignificant stay points. The value should \
+                be between 0 and 100. It can be used instead of 'min_weight'. \
+                Defaults to None.
+            trajectory_uids (Union[None, List[str]], optional): A list of \
+                unique identifiers of trajectories that specify the \
+                trajectories that should be used. Defaults to None.
         """
         kwargs.setdefault("namespace", type(self).__name__)
         self._geohelper = _RedisGeoHelper(**kwargs)
@@ -660,26 +714,15 @@ class RedisStayPointDetector(_BaseStayPointDetector, _RedisGeoHelper):
         self, datapoints: List[ds.DataPoint]
     ) -> Set[Tuple[str, float, float]]:
         """
-        Extract necessary geohashes for retrieving geofences in Redis.
-
-        Note:
-            Extract necessary geohashes for retrieving geofences, in Redis, \
-            that are essentially geospatial features representing stay point \
-            clusters belonging to a user. This is much faster if there are \
-            only few, as only a small number of objetcs need to be \
-            deserialized and queried (in comparison network calls to Redis \
-            have relatively high overhead in this case). On the other hand, \
-            if there are many geofences then it does not make sense to \
-            retrieve all the corresponding geospatial features. Sequential \
-            look-ups (w.r.t. distance) are faster as we can more selectively \
-            determine which geospatial features we need to deserialize and \
-            query.
+        Extract geohash values for retrieving geofenced regions in Redis.
 
         Args:
-            TODO
+            datapoints (List[ds.DataPoint]): A list of datapoints used to find \
+                relevant geohash values.
 
-        ReturnS:
-            TODO
+        Returns:
+            Set[Tuple[str, float, float]]: A set of geohash values associated \
+                with the given list of datapoints.
         """
         geohashes: Set[Tuple[str, float, float]] = set()
         for datapoint in datapoints:
@@ -707,6 +750,17 @@ class RedisStayPointDetector(_BaseStayPointDetector, _RedisGeoHelper):
     def extract_geofences(
         self, datapoints: List[ds.DataPoint], **kwargs: Any
     ) -> List[Polygon]:
+        """
+        Extract polygons corresponding to geofenced regions.
+
+        Args:
+            datapoints (List[ds.DataPoint]): A list of datapoints that specify \
+                the locations we need to look at for retrieving relevant \
+                geofenced regions.
+
+        Returns:
+            List[Polygon]: A list of relevant geofenced regions.
+        """
         geohash_data = self.extract_geohashes(datapoints=datapoints)
         polygons = []
         seen = set()

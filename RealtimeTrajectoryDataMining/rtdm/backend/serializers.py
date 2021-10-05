@@ -65,12 +65,11 @@ class CustomBaseUserSerializer(UserSerializerMixin):
             "username",
             "password",
         ]
-        read_only_fields = [  # Non-writable fields
+        read_only_fields = [
             "uid",
         ]
-        extra_kwargs = {  # Lookup field used by the corresponding "UserView"
-            "lookup_field": "pk"
-        }
+        # Lookup field used by the corresponding "UserView"
+        extra_kwargs = {"lookup_field": "pk"}
 
 
 class StringListField(serializers.ListField):

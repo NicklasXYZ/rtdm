@@ -9,7 +9,7 @@ from stream_handler import setup
 setup()
 import pickle
 
-import backend.detectorevaluator as deteval
+import backend.detectorevaluator as evaluator
 import backend.geohashsequenceinterpolator as ip
 import numpy as np
 import pandas as pd
@@ -117,13 +117,9 @@ def extract_stats(results, method, aggregate=False):
     return pd.DataFrame(data=_data)
 
 
-# extract_stats(results_dd0, method = "dd0", aggregate = True)
-# extract_stats(results_dd1, method = "dd1", aggregate = True)
-
-
-def eval_dd0(json_file, user, method, params):
-    de = deteval.LeaveOneOutDetectorEvaluator(
-        json_file="data/case_study_2.json",
+def eval_dd0(df, user, params):
+    de = evaluator.LeaveOneOutDetectorEvaluator(
+        data_in=df,
         user=user,
         method="dd0",
         params=params,
@@ -132,9 +128,9 @@ def eval_dd0(json_file, user, method, params):
     return params, df_out
 
 
-def eval_dd1(json_file, user, method, params):
-    de = deteval.LeaveOneOutDetectorEvaluator(
-        json_file="data/case_study_2.json",
+def eval_dd1(df, user, params):
+    de = evaluator.LeaveOneOutDetectorEvaluator(
+        data_in=df,
         user=user,
         method="dd1",
         params=params,
@@ -144,13 +140,13 @@ def eval_dd1(json_file, user, method, params):
 
 
 def dd0_runner():
-    ########
+    # Parameter 'template'
     dd0_template = {
         "precision": None,
         "theta": None,
     }
 
-    # Parameter values
+    # Parameter space. Parameter values to experiment with...
     precisions = [17, 18, 19]
     thetas = [0.05, 0.10, 0.20]
     dd0_experiments = []
@@ -158,13 +154,13 @@ def dd0_runner():
     for par0 in precisions:
         for par1 in thetas:
             v = dd0_template.copy()
-            v["precision"] = par0
-            v["theta"] = par1
+            v["precision"] = par0 # type: ignore # noqa
+            v["theta"] = par1 # type: ignore # noqa
             dd0_experiments.append(v)
 
     arg_list = []
     for item in dd0_experiments:
-        arg_list.append(["data/case_study_2.json", user, "dd0", item])
+        arg_list.append(["data/case_study_2.json", user, item])
 
     results_dd0 = []
     counter = 0
@@ -173,29 +169,24 @@ def dd0_runner():
         # Dump data for each newly completed experiment
         pickle.dump(
             results_dd0,
-            open(f"dd0_pickled_results_large_0_exp_{counter}.p", "wb"),
+            open(f"dd0_pickled_results_0_exp_{counter}.p", "wb"),
         )
         counter += 1
 
-    # with multiprocessing.Pool(processes = 10) as p:
-    #     results_dd0 = p.starmap(
-    #         eval_dd0,
-    #         arg_list,
-    #     )
-
-    for item in results_dd0:
-        print("Result: ")
-        print(item)
-        print()
-
-    pickle.dump(results_dd0, open("dd0_pickled_results_large_0.p", "wb"))
+    # Print the results to stdout
+    result_df = extract_stats(results_dd0, method = "dd0", aggregate = True)
+    print("Results: ")
+    print(result_df)
+    
+    # Save results
+    pickle.dump(results_dd0, open("dd0_case_study_2_results_0.p", "wb"))
 
 
 def dd1_runner():
-    ########
+    # Parameter 'template'
     dd1_template = {
         "precision": None,
-        "threshold_low": 0,
+        "threshold_low": 0.0,
         "threshold_high": None,
         "window_size": "1000T",
         "max_merging_distance": 28,
@@ -203,30 +194,25 @@ def dd1_runner():
         "sequence_interpolator": ip.NaiveGeohashSequenceInterpolator,
     }
 
-    # Parameter values
+    # Parameter space. Parameter values to experiment with...
     precisions = [17, 18, 19]
     threshold_highs = [0.20, 0.40, 0.60]
     dd1_experiments = []
 
-    # for par0 in precisions:
-    #     for par1 in window_sizes1:
-    #         for par2 in threshold_highs:
-    #             v = dd1_template.copy()
-    #             v["precision"] = par0
-    #             v["window_size1"] = par1
-    #             v["threshold_high"] = par2
-    #             dd1_experiments.append(v)
-
     for par0 in precisions:
         for par2 in threshold_highs:
             v = dd1_template.copy()
-            v["precision"] = par0
-            v["threshold_high"] = par2
+            v["precision"] = par0 # type: ignore # noqa
+            v["threshold_high"] = par2 # type: ignore # noqa
             dd1_experiments.append(v)
+
+    # Read in experimental data
+    main_df = evaluator.read_all("data/case_study_2.json")
 
     arg_list = []
     for item in dd1_experiments:
-        arg_list.append(["data/case_study_2.json", user, "dd1", item])
+        # arg_list.append(["data/case_study_2.json", user, "dd1", item])
+        arg_list.append([main_df.copy(), user, item])
 
     results_dd1 = []
     counter = 0
@@ -235,22 +221,17 @@ def dd1_runner():
         # Dump data for each newly completed experiment
         pickle.dump(
             results_dd1,
-            open(f"dd1_pickled_results_large_0_exp_{counter}.p", "wb"),
+            open(f"dd1_pickled_results_0_exp_{counter}.p", "wb"),
         )
         counter += 1
-
-    # with multiprocessing.Pool(processes = 10) as p:
-    #     results_dd1 = p.starmap(
-    #         eval_dd1,
-    #         arg_list,
-    #     )
-
-    for item in results_dd1:
-        print("Result: ")
-        print(item)
-        print()
-
-    pickle.dump(results_dd1, open("dd1_pickled_results_large_0.p", "wb"))
+    
+    # Print the results to stdout
+    result_df = extract_stats(results_dd1, method = "dd1", aggregate = True)
+    print("Results: ")
+    print(result_df)
+    
+    # Save results
+    pickle.dump(results_dd1, open("dd1_case_study_2_results_0.p", "wb"))
 
 
 if __name__ == "__main__":

@@ -17,16 +17,35 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import LeaveOneOut
 
 
+def read_all(json_file: str) -> Dict[int, pd.DataFrame]:
+    data_in = None
+    with open(json_file, "r") as f:
+        data_in = json.loads(f.read())
+    batches = {}
+    # Read in each batch of trajectories from the json file
+    for i, batch in enumerate(data_in):
+        df_batch = pd.read_json(batch, orient="split")
+        _data = []
+        # Deserialize each trajectory contained in the dataframe into its own
+        # dataframe and nest it inside the 'df_batch' dataframe
+        for _, row in df_batch.iterrows():
+            df_traj = pd.read_json(row["df"], orient="split")
+            _data.append(df_traj)
+        df_batch["df"] = _data
+        batches[i] = df_batch
+    return batches
+    
+
 class LeaveOneOutDetectorEvaluator:
     def __init__(
         self,
-        json_file: str,
+        data_in: pd.DataFrame,
         user: str,
         method: str,
         params: Dict[str, Any],
         bits_per_char: int = 2,
     ) -> None:
-        self.data_in = self.read_all(json_file=json_file)
+        self.data_in = data_in
         self.user = user
         # A common geohashing parameter value used by both detection methods
         self._bits_per_char = bits_per_char
@@ -38,24 +57,6 @@ class LeaveOneOutDetectorEvaluator:
         # Define a variable to keep track of whether the method "set_labels()"
         # has been called
         self._set_labels_called = False
-
-    def read_all(self, json_file: str) -> Dict[int, pd.DataFrame]:
-        data_in = None
-        with open(json_file, "r") as f:
-            data_in = json.loads(f.read())
-        batches = {}
-        # Read in each batch of trajectories from the json file
-        for i, batch in enumerate(data_in):
-            df_batch = pd.read_json(batch, orient="split")
-            _data = []
-            # Deserialize each trajectory into a dataframe and nest it inside
-            # the 'df_batch' dataframe
-            for _, row in df_batch.iterrows():
-                df_traj = pd.read_json(row["df"], orient="split")
-                _data.append(df_traj)
-            df_batch["df"] = _data
-            batches[i] = df_batch
-        return batches
 
     def set_labels(
         self, anom_uids: List, df_batch: pd.DataFrame
@@ -159,7 +160,6 @@ class LeaveOneOutDetectorEvaluator:
     ) -> Tuple[pd.DataFrame, List, float, float]:
         dd1 = detectors.DisorientationDetector(
             threshold_high=self.params["threshold_high"],
-            # threshold_low = self.params["threshold_low"],
             window_size=self.params["window_size"],
             spd=None,
             precision=self.params["precision"],
@@ -180,7 +180,7 @@ class LeaveOneOutDetectorEvaluator:
 
         return df, dd1.support, fit_time, detect_time
 
-    def cross_validation(self, trajectories: List[ds.Trajectory],) -> Any:
+    def cross_validation(self, trajectories: List[ds.Trajectory],) -> List[List[pd.DataFrame]]:
         df = detectors.BaseDetector._to_dataframe(trajectories=trajectories,)
         for column_name in ["uid"]:
             if column_name not in df.columns:
@@ -199,7 +199,7 @@ class LeaveOneOutDetectorEvaluator:
         train_test = self.retrieve_train_test_sets(uid_df, loo_splits)
         return train_test
 
-    def retrieve_train_test_sets(self, df: pd.DataFrame, kf_splits: Any) -> Any:
+    def retrieve_train_test_sets(self, df: pd.DataFrame, kf_splits: Any) -> List[List[pd.DataFrame]]:
         list_ = []
         for item in kf_splits:
             train = item[0]
@@ -211,7 +211,7 @@ class LeaveOneOutDetectorEvaluator:
             list_.append([train_df, test_df])
         return list_
 
-    def run_dd0(self, processes: int = 15) -> Dict:
+    def run_dd0(self, processes: int = 15) -> Dict[str, Any]:
         results = {}
         # Process each batch
         for i_index, batch in enumerate(self.data_in):
@@ -225,7 +225,7 @@ class LeaveOneOutDetectorEvaluator:
                 temp_df["external_timestamp"] = temp_df.index
                 # Get the uid of the trajectory
                 uid = temp_df["uid"].values[0]
-                anom_start = temp_df[temp_df["anom_start"] == True] # type: ignore
+                anom_start = temp_df[temp_df["anom_start"] == True]  # type: ignore # noqa
                 if anom_start.shape[0] > 0:
                     dict_anom_start0[uuid.UUID(uid)] = anom_start.iloc[0][
                         "external_timestamp"
@@ -236,8 +236,9 @@ class LeaveOneOutDetectorEvaluator:
             anom_uids = []
             timings = {}
             detect_res = {}
-            # Generate function arguments up front, then execute function calls
-            # in parallel using the multiprocessing library
+            # Generate required function arguments up front, then execute 
+            # function calls in parallel using the python multiprocessing
+            # library
             arg_list = []
             for pair in dfs:
                 train_traj, test_traj = self.extract_trajectories(
@@ -254,12 +255,12 @@ class LeaveOneOutDetectorEvaluator:
                     "detect_time": detect_time,
                 }
                 detect_res[test_uid] = {"support": support, "result": result}
-                anomalous = result[result["anomaly"] == True] # type: ignore
+                anomalous = result[result["anomaly"] == True]  # type: ignore # noqa
                 if anomalous.shape[0] > 0:
                     dict_anom_start1[
                         anomalous["uid"].values[0]
                     ] = anomalous.index[0]
-                anom_uid = np.unique(result[result["anomaly"] == True]["uid"]) # type: ignore # noqa
+                anom_uid = np.unique(result[result["anomaly"] == True]["uid"])  # type: ignore # noqa
                 anom_uids.extend(anom_uid)
             df_batch["fit_time"] = 0.0
             df_batch["detect_time"] = 0.0
@@ -280,9 +281,8 @@ class LeaveOneOutDetectorEvaluator:
                                 - dict_anom_start0[_uid].to_pydatetime()
                             ).total_seconds()
                         )
-                        # If the detection delay is negative then correct
-                        # the detection result by registering it as a false
-                        # positive
+                        # If the detection delay is negative then correct the 
+                        # detection result by registering it as a false positive
                         if df_out.at[_, "delay"] < 0:
                             df_out.at[_, "outcome"] = False
             auc_score = self.compute_auc_score(df_out)
@@ -316,7 +316,7 @@ class LeaveOneOutDetectorEvaluator:
         self.data_out = results
         return results
 
-    def run_dd1(self, processes: int = 15) -> Dict:
+    def run_dd1(self, processes: int = 15) -> Dict[str, Any]:
         results = {}
         # Process each batch of synthetically generated trajectories
         for i_index, batch in enumerate(self.data_in):
@@ -335,12 +335,11 @@ class LeaveOneOutDetectorEvaluator:
                 temp_df["external_timestamp"] = temp_df.index
                 # Get the uid of the trajectory
                 uid = temp_df["uid"].values[0]
-                anom_start = temp_df[temp_df["anom_start"] == True] # type: ignore # noqa
+                anom_start = temp_df[temp_df["anom_start"] == True]  # type: ignore # noqa
                 if anom_start.shape[0] > 0:
                     dict_anom_start0[uuid.UUID(uid)] = anom_start.iloc[0][
                         "external_timestamp"
                     ]
-                # return temp_df, uid, self.user, exchange, dpsh
                 trajectory = self._dd1_preprocess(
                     temp_df=temp_df,
                     uid=uid,
@@ -353,8 +352,9 @@ class LeaveOneOutDetectorEvaluator:
             anom_uids = []
             timings = {}
             detect_res = {}
-            # Generate function arguments up front, then execute function calls
-            # in parallel using the multiprocessing library
+            # Generate required function arguments up front, then execute 
+            # function calls in parallel using the python multiprocessing
+            # library
             arg_list = []
             for pair in dfs:
                 train_traj, test_traj = self.extract_trajectories(
@@ -371,12 +371,12 @@ class LeaveOneOutDetectorEvaluator:
                     "detect_time": detect_time,
                 }
                 detect_res[test_uid] = {"support": support, "result": result}
-                anomalous = result[result["anomaly"] == True] # type: ignore # noqa
+                anomalous = result[result["anomaly"] == True]  # type: ignore # noqa
                 if anomalous.shape[0] > 0:
                     dict_anom_start1[
                         anomalous["uid"].values[0]
                     ] = anomalous.index[0]
-                anom_uid = np.unique(result[result["anomaly"] == True]["uid"]) # type: ignore # noqa
+                anom_uid = np.unique(result[result["anomaly"] == True]["uid"])  # type: ignore # noqa
                 anom_uids.extend(anom_uid)
             df_batch["fit_time"] = 0.0
             df_batch["detect_time"] = 0.0
@@ -397,9 +397,8 @@ class LeaveOneOutDetectorEvaluator:
                                 - dict_anom_start0[_uid].to_pydatetime()
                             ).total_seconds()
                         )
-                        # If the detection delay is negative then correct
-                        # the detection result by registering it as a false
-                        # positive
+                        # If the detection delay is negative then correct the 
+                        # detection result by registering it as a false positive
                         if df_out.at[_, "delay"] < 0:
                             df_out.at[_, "outcome"] = False
             auc_score = self.compute_auc_score(df_out)
@@ -440,8 +439,8 @@ class LeaveOneOutDetectorEvaluator:
             df_out = self.run_dd1()
         else:
             raise ValueError(
-                "No valid detection method specified. The specified 'method'"
-                + " needs to be either 'dd0' or 'dd1'."
+                "No valid detection method specified. The specified 'method' \
+                needs to be either 'dd0' or 'dd1'."
             )
         return df_out
 
@@ -469,7 +468,7 @@ class LeaveOneOutDetectorEvaluator:
         return traj_obj
 
     # TODO: Update w.r.t. method 'bulk_process_datapoint' in file
-    #       DisorientationDetector.py
+    #       disorientationdetector.py
     def _dd1_preprocess(
         self,
         temp_df: pd.DataFrame,
@@ -502,5 +501,6 @@ class LeaveOneOutDetectorEvaluator:
             traj_obj.uid = uuid.UUID(uid)
             return traj_obj
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)

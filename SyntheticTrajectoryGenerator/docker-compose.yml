@@ -23,15 +23,15 @@ services:
     volumes:
       - ./valhalla_db/:/custom_files:rw
 
-  # redis:
-  #   restart: always
-  #   build:
-  #     context: ./redis
-  #     dockerfile: Dockerfile
-  #   container_name: redis0
-  #   environment:
-  #     - REDIS_HOST=localhost
-  #     - REDIS_PORT=6379
-  #   # command: redis-server
-  #   ports:
-  #     - 6379:6379
+  redis:
+    restart: always
+    build:
+      context: ./redis
+      dockerfile: Dockerfile
+    container_name: redis0
+    environment:
+      - REDIS_HOST=localhost
+      - REDIS_PORT=6379
+    # command: redis-server
+    ports:
+      - 6379:6379

@@ -20,7 +20,7 @@ from shapely.geometry import LineString
 
 
 class BaseDataPoint:
-    """A representation of a data point with time and location-specific data."""
+    """A representation of a point with time and location-specific data."""
 
     def __init__(
         self,
@@ -34,7 +34,7 @@ class BaseDataPoint:
 
         Args:
             latitude (float): The latitude coordinate of a location in degrees.
-            longitude (float): The longitude coordinate of a location in
+            longitude (float): The longitude coordinate of a location in \
                 degrees.
             external_timestamp (Union[None, datetime], optional): The \
                 timestamp of the observation. Defaults to None.
@@ -48,8 +48,8 @@ class BaseDataPoint:
         # Keep an identifier of the trajectory that the datapoint belongs to
         self.trajectory: Union[None, str] = None
         # A label assigned to the datapoint. For example:
-        # - 1 for anomaly
-        # - 0 for normal
+        # - "1" for anomaly
+        # - "0" for normal
         self.label: Union[None, str] = None
         # Set the timestamp of the datapoint (it should be a datetime object)
         self.external_timestamp = external_timestamp
@@ -60,10 +60,12 @@ class BaseDataPoint:
         self, precision: int, bits_per_char: int,
     ) -> "GeohashedDataPoint":
         """
+        Create a corresponding datapoint containing geohashing information.
 
         Args:
-            precision (int):
-            bits_per_char (int):
+            precision (int): Precision of the geohash.
+            bits_per_char (int): Number of bits each character in the geohash \
+                encodes.
 
         Returns:
             GohashedDataPoint:
@@ -102,14 +104,14 @@ class BaseDataPoint:
         Plot the datapoint on a map.
 
         Args:
-            center (CoordinatePair): A latitude/longitude coordinate pair \
-                that determines the centering of the map that the datapoint \
-                should be plotted on.
             color (str): The color the datapoint is plotted with.
             radius (float, optional): The radius the datapoint is plotted \
                 with. Defaults to 2.0.
-            opacity (float, optional): The opacity the datapoint is plotted \
+            opacity (float, optional):  The opacity the datapoint is plotted \
                 with. Defaults to 1.0.
+            center (Union[None, CoordinatePair], optional): A \
+                latitude/longitude coordinate pair that determines the \
+                centering of the map that the datapoint should be plotted on.
             map_ (Union[None, folium.Map], optional): A folium map object. \
                 Defaults to None.
 
@@ -153,7 +155,7 @@ class BaseDataPoint:
 
 
 class DataPoint(BaseDataPoint):
-    """A datapoint class with additional relevant methods."""
+    """An extended datapoint class with additional relevant methods."""
 
     def __init__(
         self,
@@ -189,7 +191,8 @@ class DataPoint(BaseDataPoint):
             user=user,
         )
         # If the datapoint represents an aggregate datapoint made up of several
-        # other datapoints, then keep a list of all of these datapoints
+        # other datapoints, then keep a list of all of these datapoints for
+        # possible later use
         self.datapoints: List["DataPoint"] = []
         # Compute additional attributes based on consecutive datapoints:
         # - The change in space (in meters) from one datapoint to another
@@ -213,7 +216,7 @@ class DataPoint(BaseDataPoint):
         Deserialize data into a DataPoint object.
 
         Args:
-            gpx_track_point: An objects defined by the 'gpxpy' library that \
+            gpx_track_point: An object defined by the 'gpxpy' library that \
                 contains GPS location data.
 
         Returns:
@@ -231,7 +234,7 @@ class DataPoint(BaseDataPoint):
         Deserialize data into a DataPoint object.
 
         Args:
-            data (str):
+            data (str): Json string data.
 
         Returns:
             DataPoint: A DataPoint object.
@@ -242,17 +245,17 @@ class DataPoint(BaseDataPoint):
         return cls.from_dict(data_dict)
 
     @classmethod
-    def from_msgpack(cls, data: str) -> "DataPoint":
+    def from_msgpack(cls, data: bytes) -> "DataPoint":
         """
         Deserialize data into a DataPoint object.
 
         Args:
-            data (str):
+            data (bytes): msgpack byte data.
 
         Returns:
             DataPoint: A DataPoint object.
         """
-        # Load data: str  -->  dict
+        # Load data: bytes  -->  dict
         data_dict = msgpack.loads(data)
         # Convert  : dict --> Python object
         return cls.from_dict(data_dict)
@@ -260,10 +263,10 @@ class DataPoint(BaseDataPoint):
     @classmethod
     def from_dict(cls, data_dict: Dict[str, Any]) -> "DataPoint":
         """
-        Convert a Python dictionary to a DataPoint object.
+        Convert a Python dictionary into a DataPoint object.
 
         Args:
-            data_dict (Dict[str, Any]):
+            data_dict (Dict[str, Any]): Dictionary data.
 
         Returns:
             DataPoint: A DataPoint object.
@@ -299,8 +302,8 @@ class DataPoint(BaseDataPoint):
                 dp.magnetometer_data = MagnetometerData.from_dict(
                     data_dict=data_dict["magnetometer_data"],
                 )
-            # ... Else let it be None by default
         except KeyError:
+            # ... Else let it be None by default
             pass
 
         # Set DeviceMotionData field
@@ -309,21 +312,22 @@ class DataPoint(BaseDataPoint):
                 dp.device_motion_data = DeviceMotionData.from_dict(
                     data_dict=data_dict["device_motion_data"],
                 )
-            # ... Else let it be None by default
         except KeyError:
+            # ... Else let it be None by default
             pass
         return dp
 
     @classmethod
     def from_model(cls, datapoint: django_models.DataPoint) -> "DataPoint":
         """
-        Convert Django database model to Python DataPoint object.
+        Convert a Django database model object to a Python DataPoint object.
 
         Args:
-            datapoint (django_models.DataPoint):
+            datapoint (django_models.DataPoint): A Django database model \
+                object.
 
         Returns:
-            DataPoint:
+            DataPoint: A Python DataPoint object.
         """
         dict_ = datapoint.__dict__.copy()
         dict_["external_timestamp"] = str(dict_["external_timestamp"])
@@ -333,17 +337,20 @@ class DataPoint(BaseDataPoint):
         # If 'datapoints' are not a bytes-like object then just continue
         except TypeError:
             pass
-        dict_["trajectory"] = dict_["trajectory_id"]
+        # TODO: What is the right key?
+        # dict_["trajectory"] = dict_["trajectory_id"]
+        # dict_["trajectory"] = dict_["trajectory"]
         return cls.from_dict(dict_)
 
     def compute_metrics(self, previous_datapoint: "DataPoint") -> None:
         """
         Compute and update different metrics of a datapoint w.r.t another.
 
-        Compute and update different metrics of a datapoint with respect to \
-        another datapoint (most likely a previous datapoint). The metrics \
-        computed include among others: The distance in time and space between \
-        the points along with the speed and acceleration.
+        Note:
+            Compute and update different metrics of a datapoint with respect \
+            to another datapoint (most likely a previous datapoint). The \
+            metrics computed include among others: The distance in time and \
+            space between the points along with the speed and acceleration.
 
         Args:
             previous_datapoint (DataPoint): Another datapoint (most likely a \
@@ -378,6 +385,8 @@ class DataPoint(BaseDataPoint):
             django_models.DataPoint:
         """
         if self.user is None:
+            # A unique identifier is required when converting to a Django
+            # database model object
             raise TypeError(
                 f"Attribute 'user' has value {self.user} and is not a valid \
                 UUID",
@@ -493,8 +502,8 @@ class DataPoint(BaseDataPoint):
             )
         else:
             raise ValueError(
-                "The change in time could not be calculated as the timestamp of \
-                a 'DataPoint' was None."
+                "The change in time could not be calculated as the timestamp \
+                of a 'DataPoint' was None."
             )
 
     def __eq__(self, obj: object) -> bool:
@@ -533,19 +542,22 @@ class GeohashedDataPoint:
         bits_per_char: int,
     ) -> None:
         """
-        [summary]
+        Initialize and set given class variables on class instantiation.
 
         Args:
-            latitude (float): [description]
-            longitude (float): [description]
-            precision (int): [description]
-            bits_per_char (int): [description]
+            latitude (float): The latitude coordinate of a location in degrees.
+            longitude (float): The longitude coordinate of a location in \
+                degrees.
+            precision (int): Precision of the geohash.
+            bits_per_char (int): Number of bits each character in the geohash \
+                encodes.
         """
         # Set the precision of the Geohash
         self.precision = precision
         self.bits_per_char = bits_per_char
-        # Encoded (lat, lon) coordinate pair as a geohash
+        # Encoded latitude/longitude coordinate pair as a geohash
         self.geohash: Union[None, str] = None
+        # Decoded geohash as a latitude/longitude coordinate pair
         self.decoded_latitude: Union[None, float] = None
         self.decoded_longitude: Union[None, float] = None
         self.geohash_datapoint(latitude, longitude)
@@ -566,11 +578,11 @@ class GeohashedDataPoint:
             precision=self.precision,
             bits_per_char=self.bits_per_char,
         )
+        # Also retrieve the corresponding decoded geohash as a
+        # latitude/longitude coordinate pair
         decoded_geohash = geohash_decode(
             geohash=self.geohash, bits_per_char=self.bits_per_char,
         )
-        # Also set the corresponding decoded geohash as a latitude/longitude
-        # coordinate pair
         self.decoded_latitude = float(decoded_geohash[1])
         self.decoded_longitude = float(decoded_geohash[0])
 
@@ -595,12 +607,13 @@ class DeviceMotionData:
         """
         Initialize and set given class variables on class instantiation.
 
-        A 'DeviceMotionData' object contains additional data that can be \
-        associated with a location represented by a 'DataPoint' object. A \
-        'DeviceMotionData' object contains accelerometer data obtained from a \
-        motion sensor that detects the change in movement relative to the \
-        current device orientation, in three dimensions along the x, y, and z \
-        axis.
+        Note:
+            A 'DeviceMotionData' object contains additional data that can be \
+            associated with a location represented by a 'DataPoint' object. A \
+            'DeviceMotionData' object contains accelerometer data obtained \
+            from a motion sensor that detects the change in movement relative \
+            to the current device orientation, in three dimensions along the \
+            x, y, and z axis.
 
         Args:
             x (float): The movement relative to the current device orientation \
@@ -624,7 +637,7 @@ class DeviceMotionData:
         Convert a Python dictionary to a DeviceMotionData object.
 
         Args:
-            data_dict (Dict[str, Any]):
+            data_dict (Dict[str, Any]): Dictionary data.
 
         Returns:
             DataPoint: A DeviceMotionData object.
@@ -649,7 +662,7 @@ class DeviceMotionData:
             device_motion_data (django_models.DeviceMotionData):
 
         Returns:
-            DeviceMotionData:
+            DeviceMotionData: A Python DeviceMotionData object.
         """
         dict_ = device_motion_data.__dict__.copy()
         dict_["external_timestamp"] = str(dict_["external_timestamp"])
@@ -672,7 +685,7 @@ class DeviceMotionData:
         Convert Python DeviceMotionData object to Django database model object.
 
         Returns:
-            django_models.DeviceMotionData:
+            django_models.DeviceMotionData: A Django database model object.
         """
         return django_models.DeviceMotionData(
             x=self.x,
@@ -696,11 +709,13 @@ class MagnetometerData:
         """
         Initialize and set given class variables on class instantiation.
 
-        A 'MagnetometerData' object contains additional data that can be \
-        associated with a location represented by a 'DataPoint' object. A \
-        'MagnetometerData' object contains raw directional x, y, and z \
-        magnetometer values as well as a computed magnitude of the magnetic \
-        field and an internally given timestamp for organizational purposes.
+        Note:
+            A 'MagnetometerData' object contains additional data that can \
+            be associated with a location represented by a 'DataPoint' object. \
+            A 'MagnetometerData' object contains raw directional x, y, and z \
+            magnetometer values as well as a computed magnitude of the \
+            magnetic field and an internally given timestamp for \
+            organizational purposes.
 
         Args:
             x (float): The magnetic field in the X direction.
@@ -724,7 +739,7 @@ class MagnetometerData:
         Convert a Python dictionary to a MagnetometerData object.
 
         Args:
-            data_dict (Dict[str, Any]):
+            data_dict (Dict[str, Any]): Dictionary data.
 
         Returns:
             DataPoint: A DataPoint object.
@@ -744,13 +759,13 @@ class MagnetometerData:
         cls, magnetometer_data: django_models.MagnetometerData
     ) -> "MagnetometerData":
         """
-        Convert Django database model to Python MagnetometerData object.
+        Convert Django database model object to Python MagnetometerData object.
 
         Args:
             magnetometer_data (django_models.MagnetometerData):
 
         Returns:
-            MagnetometerData:
+            MagnetometerData: A Python MagnetometerData object.
         """
         dict_ = magnetometer_data.__dict__.copy()
         dict_["internal_timestamp"] = str(dict_["internal_timestamp"])
@@ -795,13 +810,20 @@ class Trajectory:
         tag: Union[None, str] = None,
     ) -> None:
         """
-        [summary]
+        Initialize and set given class variables on class instantiation.
 
         Args:
-            datapoints (List[DataPoint]): [description]
-            user (Union[None, str], optional): [description]. Defaults to None.
-            color (Union[None, str], optional): [description]. Defaults to None.
-            tag (Union[None, str], optional): [description]. Defaults to None.
+            datapoints (List[DataPoint]): One or more chronologically ordered \
+                DataPoint objects.
+            user (Union[None, str], optional): The user that the DataPoint \
+                objects and thus the Trajectory object belongs to. Defaults \
+                to None.
+            color (Union[None, str], optional): The color that should be \
+                associated with the Trajectory object (for visualization \
+                purposes). Defaults to None.
+            tag (Union[None, str], optional): A keyword associated with the \
+                Trajectory object. For example 'raw' or 'filtered' describing \
+                a certain stage of processing. Defaults to None.
         """
         # Set a unique identifier of the trajectory
         self.uid: Union[None, str, uuid.UUID] = None
@@ -824,10 +846,13 @@ class Trajectory:
     @classmethod
     def from_json(cls, data: str) -> "Trajectory":
         """
-        Deserialize data into a Trajectory object.
+        Deserialize string data into a Python Trajectory object.
+
+        Args:
+            data (str): Json string data.
 
         Returns:
-            Trajectory: A Trajectory object.
+            Trajectory: A Python Trajectory object.
         """
         # Load data: str  -->  dict
         data_dict = json.loads(data)
@@ -839,8 +864,11 @@ class Trajectory:
         """
         Deserialize data into a Trajectory object.
 
+        Args:
+            data (bytes): msgpack byte data.
+
         Returns:
-            Trajectory: A Trajectory object.
+            Trajectory: A Python Trajectory object.
         """
         # Load data: bytes  -->  dict
         data_dict = msgpack.loads(data)
@@ -852,8 +880,11 @@ class Trajectory:
         """
         Convert a Python dictionary to a Trajectory object.
 
+        Args:
+            data_dict (Dict[str, Any]): Dictionary data.
+
         Returns:
-            Trajectory: A Trajectory object.
+            Trajectory: A Python Trajectory object.
         """
         traj = Trajectory([])
         traj.datapoints = [
@@ -869,10 +900,10 @@ class Trajectory:
     @classmethod
     def from_model(cls, trajectory: django_models.Trajectory) -> "Trajectory":
         """
-        Convert a Python dictionary to a Trajectory object.
+        Convert a Python dictionary into a Python Trajectory object.
 
         Returns:
-            Trajectory: A Trajectory object.
+            Trajectory: A Python Trajectory object.
         """
         traj = Trajectory([])
         traj.datapoints = [
@@ -887,7 +918,7 @@ class Trajectory:
 
     def to_model(self, save: bool = False) -> django_models.Trajectory:
         """
-        Convert a Trajectory object to a Django database model object.
+        Convert a Python Trajectory object into a Django database model object.
 
         Args:
             save (bool, optional): Specify if the created Django Trajectory \
@@ -903,7 +934,6 @@ class Trajectory:
             tag=self.tag,
         )
         if len(self.datapoints) > 0:
-            # TODO: Check if corresponding datapoints are saved to db!
             dps = [_.to_model() for _ in self.datapoints]
             traj_obj.start_timestamp = dps[0].external_timestamp
             traj_obj.end_timestamp = dps[-1].external_timestamp
@@ -912,20 +942,19 @@ class Trajectory:
                 # Associate each datapoint with the trajectory
                 setattr(dp, self.__django_model_field, traj_obj)  # noqa
                 obj_list.append(dp)
-        # TODO: Check if corresponding trajectory is saved to db!
+        # TODO: Make sure to save trajectory and datapoints to db if
+        # save == True
         return traj_obj
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert a Trajectory object to a Python dictionary.
+        Convert a Trajectory object into a Python dictionary.
 
         Returns:
             Dict[str, Any]: A dictionary representing a Trajectory object.
         """
         return {
-            # Trajectory fields
             "uid": self.uid,
-            # "trajectory": self.trajectory,
             "datapoints": [_.to_dict() for _ in self.datapoints],
             "color": self.color,
             "user": self.user,
@@ -1013,28 +1042,6 @@ class Trajectory:
             return False
         return True
 
-    # @classmethod
-    # def from_df(cls, df: pd.DataFrame) -> "Trajectory":
-    #     # TODO: Implement
-    #     pass
-
-    # def to_df(self, trajectory: "Trajectory") -> pd.DataFrame:
-    #     # TODO: Implement
-    #     pass
-
-    # @classmethod
-    # def unfold_trajectory(
-    #     cls,
-    #     trajectory: Union["Trajectory", django_models.Trajectory],
-    #     ) -> "Trajectory":
-    #     # TODO: Implement
-    #     if isinstance(trajectory, "Trajectory"):
-    #         pass
-    #     elif isinstance(trajectory, django_models.Trajectory):
-    #         pass
-    #     else:
-    #         pass
-
 
 # DataPoint and Trajectory helper methods
 
@@ -1085,13 +1092,15 @@ def geohash_encode(
     --------------------------------------------------------------------------
 
     Args:
-        lat (float): Latitude.
-        lon (float): Longitude.
+        lat (float): Latitude of a location in degrees.
+        lon (float): Longitude of a location in degrees.
         precision (int): Encoding precision.
-        bits_per_char (int, optional): Encoding size. Defaults to 6.
+        bits_per_char (int, optional): Number of bits each character in the \
+            geohash encodes.
+
 
     Returns:
-        str: A geohash corresponding to the given location.
+        str: A geohash corresponding to the given latitude/longitude location.
     """
     return ghh.encode(
         lat=latitude,
@@ -1107,7 +1116,8 @@ def geohash_decode(geohash: str, bits_per_char: int) -> Tuple[float, float]:
 
     Args:
         geohash (str): A geohash encoding a location.
-        bits_per_char (int, optional): Encoding size. Defaults to 6.
+        bits_per_char (int, optional): Number of bits each character in the \
+            geohash encodes.
 
     Returns:
         Tuple[float, float]: A geographical location i.e., a (latitude, \
@@ -1126,6 +1136,19 @@ def interpolation_distance_delta(
     bits_per_char: int,
     location: Union[None, CoordinatePair] = None,
 ) -> float:
+    """
+    Determine the distance between the center of two geohash grid cells.
+
+    Args:
+        precision (int): Encoding precision.
+        bits_per_char (int, optional): Number of bits each character in the \
+            geohash encodes.
+        location (Union[None, CoordinatePair], optional): The location of \
+            where the distance delta should be calculated. Defaults to None.
+
+    Returns:
+        float: The distance between the center of two geohash grid cells.
+    """
     if location is not None:
         tmp0 = ghh.encode(
             location[1],
@@ -1158,17 +1181,18 @@ def haversine_distance(
     """
     Calculate the 'Haversine' (great-circle) distance in meters.
 
-    Given two locations / (latitude, longitude) points calculate the \
-    great-circle distance between them.
+    Note:
+        Given two latitude/longitude locations calculate the great-circle \
+        distance between them.
 
     Args:
-        lat_1 (float): Latitude of the first location.
-        lon_1 (float): Longitude of the first location.
-        lat_2 (float): Latitude of the second location.
-        lon_2 (float): Longitude of the second location.
+        lat_1 (float): Latitude in degrees of the first location.
+        lon_1 (float): Longitude in degrees of the first location.
+        lat_2 (float): Latitude in degrees of the second location.
+        lon_2 (float): Longitude in degrees of the second location.
 
     Returns:
-        float: The distance between location 1 and 2 in meters.
+        float: The distance between the two locations in meters.
     """
     d_lat = np.radians(lat_1 - lat_2)
     d_lon = np.radians(lon_1 - lon_2)
@@ -1222,11 +1246,11 @@ def read_gpx_files(path: str) -> Union[None, List[Dict[str, Any]]]:
 
 def gpx_to_dataframe(path: str) -> Union[None, pd.DataFrame]:
     """
-    A method for reading GPS data (.gpx files) into a pandas DataFrame.
+    A method for reading GPS data (.gpx files) into a Pandas DataFrame.
 
     Args:
-        relative_path (str): The relative path to a directory that contains .gpx
-            files.
+        relative_path (str): The relative path to a directory that contains \
+            .gpx files.
 
     Returns:
         pd.DataFrame: A pandas DataFrame object.
@@ -1252,11 +1276,11 @@ def gpx_to_datapoints(path: str) -> Union[None, List[DataPoint]]:
     A method for reading GPS data (.gpx files) into 'DataPoint' objects.
 
     Args:
-        relative_path (str): The relative path to a directory that contains .gpx
-            files.
+        relative_path (str): The relative path to a directory that contains \
+            .gpx files.
 
     Returns:
-        list: A list of 'DataPoint' objects.
+        list: A list of DataPoint objects.
     """
     sorted_data = read_gpx_files(path=path)
     if sorted_data is None:

@@ -5,7 +5,6 @@ import folium  # pip install folium
 import geohash_hilbert as ghh
 from backend.typealias import CoordinatePair, Sequence
 from folium import plugins  # pip install folium
-from shapely.geometry import LineString, Point
 
 # Folium map-specific helper methods
 

@@ -8,10 +8,7 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
 
-# Class for namespacing operations on a sequence of geohashes. None of the
-# methods in this class should be used by themselves. The a proper control
-# flow, i.e., the proper sequence of operations should be handled in an outer
-# scope.
+# Class for namespacing operations on a sequence of geohashes.
 class BaseGeohashSequenceInterpolator:
     @staticmethod
     def _interpolate_geohash_sequence(
@@ -283,12 +280,8 @@ class NaiveGeohashSequenceInterpolator(BaseGeohashSequenceInterpolator):
                     # Else skip, so we do not collect identical geohash values
                 else:
                     sequence_.append(geohash)
-            # TODO: Check if this is consistent (start/end included) with
-            # class 'GeohashInterpolator'
             return sequence_, linestring
         else:
-            # TODO: Check if this is consistent (start/end included) with
-            # class 'GeohashInterpolator'
             return [start_geohash, end_geohash], None
 
 

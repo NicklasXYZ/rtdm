@@ -96,9 +96,14 @@ class BaseSequenceScorer:
         Initialize and set given class variables on class instantiation.
 
         Args:
+            exchange (Union[xchanges.InMemoryMessageExchangeWrapper, \
+                xchanges.RedisMessageExchangeWrapper]): An object for \
+                interfacing with in-memory datastructures.
             fns (Union[None, Dict[Any, Tuple[ScoringFunction, float]]], \
-                optional): A dictionary of tuples each containing a scoring \
-                function and corresponding weight. Defaults to None.
+                optional): A dictionary of tuples each containing a \
+                function and corresponding weights. The function should be\
+                able to calculate a similarity score between two sequences. \
+                Defaults to None.
         """
         self._exchange = exchange
         self.fns = fns
@@ -141,10 +146,10 @@ class BaseSequenceScorer:
 
         Args:
             database (List[Sequence]): A list of sequences (lists) made up of \
-                tokens.
+                tokens (individual strings).
             min_frequency (int, optional): The minimum number of times a \
                 pattern should appear before it is actually considered \
-                    a pattern. Defaults to 1.
+                a pattern. Defaults to 1.
             closed (bool, optional): A pattern is closed if there is no \
                 super-pattern with the same frequency. Defaults to True.
             generator (bool, optional): A pattern is generator if there is \
@@ -221,7 +226,7 @@ class BaseSequenceScorer:
         Retrieve the set of frequent sequential patterns belonging to a user.
 
         Args:
-            uid (str): The unique identifier of an entity.
+            uid (str): The unique identifier of a user.
             obj_type (str, optional): A namespace used to categorize different \
                 types of data inserted into Redis. Defaults to the string: \
                 "support".
@@ -236,32 +241,31 @@ class BaseSequenceScorer:
             raise TypeError("Expected input argument 'obj_type' to be a string")
         # Contruct the key of the value in Redis that we want to access
         key = self.get_key(obj_type=obj_type, uid=uid)
-        support = self._get_support(key=key, uid=uid)
+        support = self._get_support(name=key, uid=uid)
         return support
 
     def score_sequence(
-        self, uid: str, sequence: List[Token],  # TODO: Update type 'Sequence'
+        self, uid: str, sequence: Sequence,
     ) -> Union[None, float]:
         """
-        Compute a similarity score.
+        Compute a similarity score between a sequence and set of known patterns.
 
         Note:
             Method used for scoring a sequence given the unique identifier of \
             a user. The support set, i.e. a set of frequent sequential \
-            patterns, is retrieved based on the given unique identifier. Based \
-            on the support set an anomaly score is calculated and returned.
+            patterns is retrieved based on the given unique identifier. Based \
+            on the support set a similarity score is calculated and returned.
 
         Args:
-            uid (str): The unique identifier of an entity.
-            sequence (List[Token]): A sequence that is to be scored.
+            uid (str): The unique identifier of a user.
+            sequence (Sequence): A sequence that is to be scored w.r.t. a set \
+                of frequent sequential patterns.
 
         Raises:
             ValueError: If a wrongly formatted input sequence is given.
 
         Returns:
-            float: The anomaly score computed as a weighted average of the \
-                alignment scores between the new sequence and the sequences \
-                in the support set.
+            float: The similarity score computed.
         """
         support = self.get_support(uid=uid)
         if support is not None:
@@ -278,15 +282,15 @@ class BaseSequenceScorer:
         else:
             return None
 
-    def clear(self, uid: str, obj_type: str = "support",) -> bool:
+    def clear(self, uid: str, obj_type: str = "support") -> bool:
         """
         Clear all sequence data associated with a certain user.
 
         Args:
             uid (str): The unique identifier of an entity.
-            obj_type (str, optional): A namespace used to categorize \
-                different types of data inserted into the Redis KV store. \
-                Defaults to the string: "support".
+            obj_type (str, optional): A namespace used to categorize different \
+                types of data inserted into Redis. Defaults to the string: \
+                "support".
 
         Returns:
             bool: True if successful, otherwise False.
@@ -300,9 +304,9 @@ class BaseSequenceScorer:
         # Delete cached support set associated with the entity
         # TODO: Handle re-connection logic / print error message of failed
         # attempt
-        return self._clear(key=key, uid=uid)
+        return self._clear(name=key, uid=uid)
 
-    def _get_support(self, key: str, uid: str) -> Union[None, List[Pattern]]:
+    def _get_support(self, name: str, uid: str) -> Union[None, List[Pattern]]:
         # This method should be implemented in a subclass
         raise NotImplementedError("Missing implementation in subclass!")
 
@@ -333,7 +337,7 @@ class BaseSequenceScorer:
         # This method should be implemented in a subclass
         raise NotImplementedError("Missing implementation in subclass!")
 
-    def _clear(self, key: str, uid: str) -> bool:
+    def _clear(self, name: str, uid: str) -> bool:
         # This method should be implemented in a subclass
         raise NotImplementedError("Missing implementation in subclass!")
 
@@ -370,19 +374,21 @@ class InMemorySequenceScorer(BaseSequenceScorer):
 
     # TODO: Possibly rename...
     def _get_or_create_support(
-        self, key: str, uid: str
+        self, name: str, uid: str
     ) -> Union[None, List[Pattern]]:
         """
         Get or create the support set.
 
         Args:
-            uid (str): A unique identifier of an entity.
+            name (str): The name associated with a certain value stored in \
+                memory.
+            uid (str): A unique identifier of a user.
 
         Returns:
             Union[None, List[Pattern]]: Return requested support set if \
                 possible, otherwise None.
         """
-        value = self._exchange.kv_get(key=key)
+        value = self._exchange.kv_get(name=name)
         if value is not None:
             return msgpack.loads(value)
         else:
@@ -394,30 +400,34 @@ class InMemorySequenceScorer(BaseSequenceScorer):
                 # support = self._create_support(uid = uid)
                 # return support
 
-    def _add_support(self, key: str, support: bytes) -> bool:
+    def _add_support(self, name: str, support: bytes) -> bool:
         """
-        Add a frequent sequential patterns to Redis.
+        Set/store a set of frequent sequential patterns in memory.
 
         Args:
-            key (str): The key to the value in Redis.
-            support (bytes): The encoded support set that should be added to
-                Redis for easy and effecient access.
+            name (str): The name associated with a certain value stored in \
+                memory.
+            support (bytes): The encoded support set that should be added set \
+                in memory for easy and effecient access.
 
         Returns:
-            bool: A status code indicating whether the attempt to insert the \
-                data was successful or not: 1 successful, otherwise 0.
+            bool: A boolean value indicating whether the attempt to insert the \
+                data was successful or not. True if successful, otherwise False.
         """
-        return self._exchange.kv_set(key=key, data=support)
+        return self._exchange.kv_set(name=name, data=support)
 
-    def _get_support(self, key: str, uid: str,) -> Union[None, List[Pattern]]:
+    def _get_support(self, name: str, uid: str,) -> Union[None, List[Pattern]]:
         """
         Retrieve the support set of frequent sequential patterns of a user.
 
         Args:
-            key (str): The key used to specify the value in Redis that should \
-                be retrieved. The key is made up of a namespace and a unique \
-                identifier of an entity. An appropriate key can be generated \
-                with the 'get_key()' method.
+            name (str): The name associated with a value stored in memory and \
+                that should be retrieved. The name is made up of a namespace \
+                and a unique identifier of a user.
+        Raises:
+            ValueError: If self._exchange is not of type \
+                    xchanges.InMemoryMessageExchangeWrapper
+            ValueError: If self._exchange.client is None.
 
         Returns:
             Union[None, List[Pattern]]: Return requested support set if \
@@ -429,7 +439,7 @@ class InMemorySequenceScorer(BaseSequenceScorer):
             ):
                 # Check if the value that contains the support set exists in
                 # cache
-                if self._exchange.client.exists(key) == 0:
+                if self._exchange.client.exists(name) == 0:
                     # -> If the value does not exist then retrieve the data
                     # from the database and cache the data by loading it into
                     # Redis
@@ -437,10 +447,10 @@ class InMemorySequenceScorer(BaseSequenceScorer):
                         f"Function: '{self._get_support.__name__}'. \
                         Information: Retriving information from the database!"
                     )
-                    support = self._get_or_create_support(uid=uid, key=key)
+                    support = self._get_or_create_support(uid=uid, name=name)
                     if support is not None:
                         self._add_support(
-                            key=key, support=msgpack.dumps(support),
+                            name=name, support=msgpack.dumps(support),
                         )
                         return support
                     else:
@@ -456,25 +466,32 @@ class InMemorySequenceScorer(BaseSequenceScorer):
                         f"Function: '{self.get_support.__name__}'. \
                         Information: Reading cached data from Redis!"
                     )
-                    # support = self._exchange.client.get(name = key)
-                    support = self._exchange.kv_get(key=key)
+                    support = self._exchange.kv_get(name=name)
                     return msgpack.loads(support)
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.InMemoryMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
-    def _clear(self, key: str, uid: str) -> bool:
+    def _clear(self, name: str, uid: str) -> bool:
         """
         Clear all sequence data associated with a user.
 
         Args:
-            uid (str): The unique identifier of an entity.
+            uid (str): The unique identifier of a user.
             obj_type (str, optional): A namespace used to categorize different \
                 types of data inserted into Redis. Defaults to the string: \
                 "support".
+
+        Raises:
+            ValueError: If self._exchange is not of type \
+                    xchanges.InMemoryMessageExchangeWrapper
+            ValueError: If self._exchange.client is None.
 
         Returns:
             bool: True if successful otherwise False.
@@ -483,13 +500,16 @@ class InMemorySequenceScorer(BaseSequenceScorer):
             if isinstance(
                 self._exchange.client, xchanges.InMemoryMessageExchange
             ):
-                return self._exchange.client.delete(key)
+                return self._exchange.client.delete(name)
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.InMemoryMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
 
 class SequenceScorer(BaseSequenceScorer):
@@ -497,19 +517,28 @@ class SequenceScorer(BaseSequenceScorer):
         super().__init__(**kwargs)
 
     def _add_support(
-        self, key: str, support: bytes, ttl: Union[None, int] = None,
+        self, name: str, support: bytes, ttl: Union[None, int] = None,
     ) -> bool:
         """
-        Add frequent sequential patterns to Redis.
+        Add a set of frequent sequential patterns to Redis.
 
         Args:
-            key (str): The key to the value in Redis.
+            name (str): The name associated with a value stored in memory and \
+                that should be retrieved. The name is made up of a namespace \
+                and a unique identifier of a user.
             support (bytes): The encoded support set that should be added to \
                 Redis for easy and effecient access.
+            ttl (Union[None, int], optional): [description]. Defaults to None.
+
+        Raises:
+            TypeError: If argument 'ttl' is not of type int.
+            ValueError: If self._exchange is not of type \
+                    xchanges.RedisMessageExchangeWrapper
+            ValueError: If self._exchange.client is None.
 
         Returns:
-            int: A status code indicating whether the attempt to insert the \
-                data was successful or not: 1 successful, otherwise 0.
+            bool: A boolean value indicating whether the attempt to insert the \
+                data was successful or not: True if successful, otherwise False.
         """
         if ttl is not None and ttl is not isinstance(ttl, int):
             error = (
@@ -537,7 +566,7 @@ class SequenceScorer(BaseSequenceScorer):
                     try:
                         if support_added is False:
                             return_code = self._exchange.client.set(
-                                key, support, ex=ttl,
+                                name, support, ex=ttl,
                             )
                             if return_code is True:
                                 support_added = True
@@ -549,21 +578,29 @@ class SequenceScorer(BaseSequenceScorer):
                     time.sleep(self._exchange.wait_time)
                 return True  # Return status code 1: Successful
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.RedisMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
-    def _get_support(self, key: str, uid: str,) -> Union[None, List[Pattern]]:
+    def _get_support(self, name: str, uid: str,) -> Union[None, List[Pattern]]:
         """
         Retrieve the set of frequent sequential patterns belonging to a user.
 
         Args:
-            key (str): The key used to specify the value in Redis that should \
-                be retrieved. The key is made up of a namespace and a unique \
-                identifier of an entity. An appropriate key can be generated \
-                with the 'get_key()' method.
+            name (str): The name associated with a value stored in memory and \
+                that should be retrieved. The name is made up of a namespace \
+                and a unique identifier of a user.
+            uid (str): The unique identifier of a user.
+
+        Raises:
+            ValueError: If self._exchange is not of type \
+                    xchanges.RedisMessageExchangeWrapper
+            ValueError: If self._exchange.client is None.
 
         Returns:
             Union[None, List[Pattern]]: Return requested support set if \
@@ -574,7 +611,7 @@ class SequenceScorer(BaseSequenceScorer):
 
                 # Check if the value that contains the support set exists in
                 # cache
-                if self._exchange.client.exists(key) == 0:
+                if self._exchange.client.exists(name) == 0:
                     # -> If the value does not exist then retrieve the data
                     # from the database and cache the data by loading it into
                     # Redis
@@ -585,7 +622,7 @@ class SequenceScorer(BaseSequenceScorer):
                     support = self._get_or_create_support(uid)
                     if support is not None:
                         self._add_support(
-                            key=key, support=msgpack.dumps(support),
+                            name=name, support=msgpack.dumps(support),
                         )
                         return support
                     else:
@@ -601,14 +638,17 @@ class SequenceScorer(BaseSequenceScorer):
                         f"Function: '{self.get_support.__name__}'. \
                         Information: Reading cached data from Redis!"
                     )
-                    support = self._exchange.client.get(name=key)
+                    support = self._exchange.client.get(name=name)
                     return msgpack.loads(support)
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.RedisMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _create_support(
         self,
@@ -627,10 +667,10 @@ class SequenceScorer(BaseSequenceScorer):
     # TODO: Possibly rename...
     def _get_or_create_support(self, uid: str) -> Union[None, List[Pattern]]:
         """
-        Get or create the support set.
+        Get or create the support set associated with a user.
 
         Args:
-            uid (str): A unique identifier of an entity.
+            uid (str): A unique identifier of a user.
 
         Returns:
             Union[None, List[Pattern]]: Return requested support set if \
@@ -642,34 +682,42 @@ class SequenceScorer(BaseSequenceScorer):
         except django_models.SupportSet.DoesNotExist:
             return None
 
-    def _clear(self, key: str, uid: str,) -> bool:
+    def _clear(self, name: str, uid: str,) -> bool:
         """
         Clear all sequence data associated with a user.
 
         Args:
-            uid (str): The unique identifier of an entity.
-            obj_type (str, optional): A namespace used to categorize different \
-                types of data inserted into Redis. Defaults to the string: \
-                "support".
+            name (str): The name associated with a value stored in memory and \
+                 that should be retrieved. The name is made up of a namespace \
+                 and a unique identifier of a user.
+            uid (str): The unique identifier of a user.
+
+        Raises:
+            ValueError: If self._exchange is not of type \
+                    xchanges.RedisMessageExchangeWrapper
+            ValueError: If self._exchange.client is None.
 
         Returns:
-            int: 1 if successful.
+            bool: [description]
         """
         if isinstance(self._exchange, xchanges.RedisMessageExchangeWrapper):
             if isinstance(self._exchange.client, redis.Redis):
-                return_value = self._exchange.client.delete(key)
+                return_value = self._exchange.client.delete(name)
                 # Delete the support set associated with the entity from the
                 # database
                 # TODO: Handle failed attempt / print error message of failed
                 # attempt
                 django_models.SupportSet.objects.filter(uid=uid).delete()
-                return return_value
+                return bool(return_value)
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.RedisMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
 
 class ExtendedInMemorySequenceScorer(InMemorySequenceScorer):

@@ -15,7 +15,7 @@ from shapely.geometry import Polygon  # pip install shapely
 class _BaseGeoHelper:
     def __init__(
         self,
-        # Pass Redis client and connection from outer scope
+        # Pass client from outer scope
         exchange: Union[
             xchanges.InMemoryMessageExchangeWrapper,
             xchanges.RedisMessageExchangeWrapper,
@@ -187,25 +187,29 @@ class _GeoHelper(_BaseGeoHelper):
             if geoset is not None:
                 return self.decode_geoset(geoset)
             else:
-                logging.warning("")  # TODO: Error message
+                logging.debug("")  # TODO: Debug message
                 return None
         else:
-            logging.debug("")  # TODO: Debug message
-            return None
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
-    def _add_geoset(self, key: str, geoset: Tuple[Any, ...]) -> int:
+    def _add_geoset(self, name: str, geoset: Tuple[Any, ...]) -> int:
         if isinstance(self._exchange, xchanges.InMemoryMessageExchangeWrapper):
             if isinstance(
                 self._exchange.client, xchanges.InMemoryMessageExchange
             ):
-                self._exchange.kv_set(data=geoset, key=key)
+                self._exchange.kv_set(data=geoset, name=name)
                 return 1
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.InMemoryMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
 
 # Internally used class
@@ -257,8 +261,6 @@ class _RedisGeoHelper(_BaseGeoHelper):
         """
         Given a location in lat/lon coordinates return polygons in the vicinity.
 
-        Note: TODO: In the future we might want cache other types of polygons \
-            or be more specific.
         Args:
             lat (float): The latitude coordinate of a location in decimal \
                 degrees.
@@ -345,11 +347,14 @@ class _RedisGeoHelper(_BaseGeoHelper):
                 # Attempt was successful
                 return 1
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.RedisMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _get_geoset(
         self,
@@ -449,8 +454,11 @@ class _RedisGeoHelper(_BaseGeoHelper):
                     )
                     return self.decode_geoset(geoset1)
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"self._exchange is not of type: \
+                    xchanges.RedisMessageExchangeWrapper"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)

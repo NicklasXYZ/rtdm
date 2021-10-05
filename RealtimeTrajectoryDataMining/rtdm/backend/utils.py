@@ -14,14 +14,14 @@ def get_queue(namespace: str, user: str, name: str) -> str:
     Construct a proper key for accessing a certain datastructure in Redis.
 
     Args:
-        namespace (str): A namespace used to identify the class that manages
-            the queue.
+        namespace (str): A namespace used to e.g. identify the class that
+            manages the list/queue.
         user (str): A unique identifier of a user.
-        name (str): The name of the queue that represent a certain step in the
-            data-processing pipleline.
+        name (str): The name of the list/queue that represent a certain step
+            in the data-processing pipleline.
 
     Returns:
-        str: The key to a queue in Redis.
+        str: The key to a list/queue in Redis.
     """
     return f"{namespace}:{user}:{name}"
 
@@ -54,7 +54,7 @@ def color_rgb(num: Union[None, int] = None) -> Tuple[int, int, int]:
 
 def str_is_number(string: str) -> bool:
     """
-    Check whether a given input is a string or a number.
+    Check whether a given string input is a string or actually a number.
 
     Args:
         s (str): A string.
@@ -77,7 +77,8 @@ def timing(function):
 
     Note:
         The function f is called in an ordinary manner and the result is \
-        returned. The time of the function call is simply logged to stdout.
+        returned. The time of the function call is simply logged to stdout \
+        via the print() function.
 
     Args:
         f (function): The function to be timed.
@@ -113,11 +114,11 @@ def filter_dataframe(
     df: pd.DataFrame, bounds: List[CoordinatePair]
 ) -> pd.DataFrame:
     """
-    Filter a dataframe based on (latitude, longitude) upper and lower bounds.
+    Filter a dataframe based on latitude/longitude upper and lower bounds.
 
     Args:
         df (pd.DataFrame): A dataframe containing timestamped location data.
-        bounds (List[CoordinatePair]): Upper and lower (latitude, longitude) \
+        bounds (List[CoordinatePair]): Upper and lower latitude/longitude \
             bounds.
 
     Raises:
@@ -126,7 +127,8 @@ def filter_dataframe(
         ValueError: If a longitude upper bound is smaller than a lower bound.
 
     Returns:
-        pd.DataFrame: A filtered/reduced dataframe.
+        pd.DataFrame: A filtered dataframe containing latitude/longitude data \
+            that falls within given upper and lower bounds.
     """
     for column_name in ["longitude", "latitude", "external_timestamp"]:
         if column_name not in df.columns:
@@ -135,13 +137,13 @@ def filter_dataframe(
             )
     if not bounds[1][0] < bounds[0][0]:
         raise ValueError(
-            f"Latitude upper bound 'bounds[1][0]' = {bounds[1][0]} is smaller "
-            + f"than the lower bound 'bounds[0][0]' = {bounds[0][0]}."
+            f"Latitude upper bound 'bounds[1][0]' = {bounds[1][0]} is smaller \
+            than the lower bound 'bounds[0][0]' = {bounds[0][0]}."
         )
     if not bounds[1][0] < bounds[0][0]:
         raise ValueError(
-            f"Longitude upper bound 'bounds[1][1]' = {bounds[1][1]} is smaller "
-            + f"than the lower bound 'bounds[0][1]' = {bounds[0][1]}."
+            f"Longitude upper bound 'bounds[1][1]' = {bounds[1][1]} is smaller \
+            than the lower bound 'bounds[0][1]' = {bounds[0][1]}."
         )
     df_filtered = df[
         (df["latitude"] < bounds[0][0])

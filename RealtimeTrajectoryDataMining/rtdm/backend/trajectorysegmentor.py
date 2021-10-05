@@ -8,7 +8,6 @@ import backend.models as django_models
 import backend.staypointdetector as spdetector
 import backend.utils as utils
 import backend.xchanges as xchanges
-from backend.typealias import Sequence
 from shapely.geometry import Polygon
 
 
@@ -40,8 +39,8 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
 
         Args:
             time_period (str): The minimum duration a user has to be \
-                stationary before he/she is considered as staying in a \
-                certain area. Defaults to "2.5T", which is 2.5 minutes.
+                stationary before he/she is considered as being stationary \
+                in a certain area. Defaults to "2.5T", which is 2.5 minutes.
         """
         self.time_period = time_period
         super().__init__(**kwargs)
@@ -49,33 +48,6 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
 
     def handle(self, user: str) -> None:
         pass
-
-    def _check_vars(self) -> None:
-        """Check and validate all class arguments on class instantiation."""
-        super()._check_vars()
-        if not isinstance(self.time_period, str):
-            error = (
-                f"ARG 'time_period' is of type {type(self.time_period)} "
-                + "but should be of type 'str'!"
-            )
-            try:
-                self.time_period = str(self.time_period)
-            except Exception:
-                raise TypeError(error)
-        else:
-            str_list = self.time_period.split("T")
-            correct_format = True
-            if len(str_list) == 2:
-                if utils.str_is_number(str_list[0]) is False:
-                    correct_format = False
-            else:
-                correct_format = False
-            if correct_format is False:
-                raise ValueError(
-                    f"The given 'time_period' value is: {self.time_period}. \
-                    It needs to follow a specific format. For example: \
-                    '12.5T' is 12 minues and 30 seconds."
-                )
 
     # def handle(self, user: str) -> None:
     #     """ Handling incoming data for a certain user...
@@ -133,6 +105,31 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
     #             "The data taken from the queue had value None!"
     #         )
 
+    def _check_vars(self) -> None:
+        """Check and validate all class arguments on class instantiation."""
+        super()._check_vars()
+        if not isinstance(self.time_period, str):
+            error = f"ARG 'time_period' is of type {type(self.time_period)} \
+                but should be of type 'str'!"
+            try:
+                self.time_period = str(self.time_period)
+            except Exception:
+                raise TypeError(error)
+        else:
+            str_list = self.time_period.split("T")
+            correct_format = True
+            if len(str_list) == 2:
+                if utils.str_is_number(str_list[0]) is False:
+                    correct_format = False
+            else:
+                correct_format = False
+            if correct_format is False:
+                raise ValueError(
+                    f"The given 'time_period' value is: {self.time_period}. \
+                    It needs to follow a specific format. For example: \
+                    '12.5T' is 12 minues and 30 seconds."
+                )
+
     def _segment_trajectory_online(
         self,
         user: str,
@@ -140,6 +137,19 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
         polygons: List[Polygon],
         save_breakpoints: bool = False,
     ) -> None:
+        """
+        Segment a sequence of datapoints into one or more trajectories.
+
+        Args:
+            user (str): The user the datapoints belong to.
+            datapoints (List[ds.DataPoint]): A sequence of datapoints that are \
+                to be segmented into one or more trajectories.
+            polygons (List[Polygon]): A list of polygons representing \
+                locations/regions that a certin user frequents and stays at \
+                for an extended period of time.
+            save_breakpoints (bool, optional): True if breakpoints should be
+                saved to the database, otherwise False. Defaults to False.
+        """
         trajectory = datapoints[0].trajectory
         if trajectory is None:
             raise ValueError(
@@ -161,8 +171,6 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
             ) = dfinterfaces.BreakPointDataFrame._retrieve_indices(
                 data=data, last_index=None,
             )
-            # print(start_index, scan_index)
-
             last_index = dfinterfaces.BreakPointDataFrame._find_breakpoints(
                 exchange=self._exchange,
                 user=user,
@@ -305,18 +313,14 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
         #     radius = 100.,
         #     **{"exchange": self._exchange},
         # )
-        # Run through all retrieved trajectories and segment each trajectory
-        # into possibly several subtrajectories
+        # Run through all trajectories and segment each trajectory into
+        # possibly several subtrajectories
         for trajectory in trajectories:
             datapoints = trajectory.datapoints
-            # datapoints = datastructures.Trajectory.from_model(
-            #   trajectory
-            # ).datapoints
             polygons = spd.extract_geofences(
                 datapoints=datapoints, **{"user": user}
             )
-            print("Polygons: ", polygons)
-            # TODO: Save breakpoints in bulk!
+            # TODO: Save breakpoints in bulk instead of one at a time!
             self._segment_trajectory_online(
                 user=user,
                 datapoints=datapoints,
@@ -486,29 +490,29 @@ class TrajectorySegmentor(BaseTrajectorySegmentor):
         self._bulk_manager.add_bulk(obj_list=obj_list)
         self._bulk_manager.done()
 
-    def _to_geohash_sequences(
-        self,
-        user: str,
-        subtrajectories: django_models.Trajectory,
-        precision: int,
-        bits_per_char: int,
-    ) -> List[Sequence]:
-        # TODO: Make min_subtrajectory_size a GLOBAL variable
-        min_subtrajectory_size = 5
-        geohash_sequences = []
-        for subtrajectory in subtrajectories:
-            geohash_sequence: Sequence = []
-            for datapoint in list(subtrajectory.datapoints):
-                geohash = datapoint.get_geohashed_datapoint(
-                    precision=precision, bits_per_char=bits_per_char,
-                ).geohash
-                if len(geohash_sequence) >= 1:
-                    if geohash_sequence[-1] != geohash:
-                        geohash_sequence.append(geohash)
-                # Else skip, so we do not collect duplicate geohash
-                # sequences
-                else:
-                    geohash_sequence.append(geohash)
-            if len(geohash_sequence) >= min_subtrajectory_size:
-                geohash_sequences.append(geohash_sequence)
-        return geohash_sequences
+    # def _to_geohash_sequences(
+    #     self,
+    #     user: str,
+    #     subtrajectories: django_models.Trajectory,
+    #     precision: int,
+    #     bits_per_char: int,
+    # ) -> List[Sequence]:
+    #     # TODO: Make min_subtrajectory_size a GLOBAL variable
+    #     min_subtrajectory_size = 5
+    #     geohash_sequences = []
+    #     for subtrajectory in subtrajectories:
+    #         geohash_sequence: Sequence = []
+    #         for datapoint in list(subtrajectory.datapoints):
+    #             geohash = datapoint.get_geohashed_datapoint(
+    #                 precision=precision, bits_per_char=bits_per_char,
+    #             ).geohash
+    #             if len(geohash_sequence) >= 1:
+    #                 if geohash_sequence[-1] != geohash:
+    #                     geohash_sequence.append(geohash)
+    #             # Else skip, so we do not collect duplicate geohash
+    #             # sequences
+    #             else:
+    #                 geohash_sequence.append(geohash)
+    #         if len(geohash_sequence) >= min_subtrajectory_size:
+    #             geohash_sequences.append(geohash_sequence)
+    #     return geohash_sequences

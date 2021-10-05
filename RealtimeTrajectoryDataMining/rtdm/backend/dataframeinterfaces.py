@@ -14,10 +14,6 @@ import pandas as pd
 from django.conf import settings
 from shapely.geometry import Point, Polygon
 
-# from stream_handler import setup
-# setup()
-
-
 # TODO: Geohash interpolator object should be passed as
 #       a function argument and not be hardcoded inside
 #       the respective functions below...
@@ -65,7 +61,7 @@ class DataFrameInterface:
                 # Convert all dictionary data to bytes
                 serialized_data = msgpack.dumps(data_)
                 exchange.kv_set(
-                    data=serialized_data, key=f"{user}:{obj_type}",
+                    data=serialized_data, name=f"{user}:{obj_type}",
                 )
         else:
             raise ValueError(
@@ -96,7 +92,7 @@ class DataFrameInterface:
             Union[None, pd.DataFrame]: A dataframe or None.
         """
         data = exchange.kv_get(
-            key=f"{user}:{obj_type}", timeout=timeout  # type: ignore # noqa
+            name=f"{user}:{obj_type}", timeout=timeout  # type: ignore # noqa
         )
         if data is not None:
             # Convert all byte data to a dictionary
@@ -137,7 +133,9 @@ class DataFrameInterface:
         if exchange.client is not None:
             exchange.client.delete(f"{user}:{obj_type}")
         else:
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
 
 # Class for namespacing operations on a certain type of dataframe.

@@ -146,8 +146,9 @@ class BaseDataPointStreamHandler:
             # ingress queue
             self.finish_trajectory(user=user)
         else:
-            logging.warning("")
-            raise ValueError
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def finish_trajectory(self, user: str) -> None:
         """
@@ -199,13 +200,16 @@ class BaseDataPointStreamHandler:
             if values is not None:
                 self._to_db(user=user, values=values)
             else:
-                logging.warning("")
+                error = f"values are None!"
+                logging.warning(error)
+                raise ValueError(error)
             # After we have saved everything to the database, we clean up the
             # queues
             self._clear_queues(user=user)
         else:
-            logging.warning("")
-            raise ValueError
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _check_vars(self) -> None:
         """Check and validate all class arguments on class instantiation."""
@@ -350,8 +354,9 @@ class BaseDataPointStreamHandler:
             ) = pipe.execute()
             return ingress_queue_size, aggregate_queue_size, filter_queue_size
         else:
-            logging.warning("")
-            raise ValueError
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _forward_data(self) -> bool:
         return settings.FORWARD_DATA
@@ -451,11 +456,13 @@ class BaseDataPointStreamHandler:
                 dp.trajectory = values[0].trajectory
                 return dp
             else:
-                logging.warning("")
-                raise ValueError
+                error = f"dps is None!"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _clear_queues(self, user: str) -> None:
         """
@@ -483,8 +490,9 @@ class BaseDataPointStreamHandler:
             # Execute the full pipeline of Redis commands
             pipe.execute()
         else:
-            logging.warning("")
-            raise ValueError
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _set_uuid(
         self, dp: ds.DataPoint, data: Dict[str, Any],
@@ -495,7 +503,7 @@ class BaseDataPointStreamHandler:
 
     def _get_data(self, user: str) -> Dict[str, Any]:
         data = self._exchange.kv_get(
-            key=self._get_key(
+            name=self._get_key(
                 namespace=self.namespace,
                 user=user,
                 name=settings.CURRENT_TRAJECTORY_KVSTORE,
@@ -572,8 +580,9 @@ class BaseDataPointStreamHandler:
             dp0_ = self._set_uuid(dp0_, data)
             return dp0_, dp1_
         else:
-            logging.warning("")
-            raise ValueError
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _aggregate_trajectory(
         self,
@@ -633,8 +642,9 @@ class BaseDataPointStreamHandler:
                         # operation on the queue)
                         aggregate_queue_size += 1
                     else:
-                        logging.warning("")
-                        raise ValueError("")
+                        error = f"dp is None!"
+                        logging.warning(error)
+                        raise ValueError(error)
             # Place the newest datapoint 'dp1_' into the AGGREGATE queue. It is
             # close to the previous datapoint 'dp0_' that was inserted into the
             # AGGREGATE queue just now or previously
@@ -670,8 +680,9 @@ class BaseDataPointStreamHandler:
                     dp = ds.DataPoint.from_msgpack(dp)
                     adp.compute_metrics(dp)
                 else:
-                    logging.warning("")
-                    raise ValueError("")
+                    error = f"dp is None!"
+                    logging.warning(error)
+                    raise ValueError(error)
             # Set the aggregate datapoint, as the next datapoint we take out of
             # the INGRESS queue
             self._exchange.client.lset(
@@ -684,8 +695,9 @@ class BaseDataPointStreamHandler:
                 ),
             )
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _separate_trajectory(
         self,
@@ -752,8 +764,9 @@ class BaseDataPointStreamHandler:
             # queues
             self._clear_queues(user=user)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _extend_trajectory(
         self,
@@ -824,8 +837,9 @@ class BaseDataPointStreamHandler:
             # Execute the full pipeline of Redis commands
             pipe.execute()
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
 
 class InMemoryDataPointStreamHandler(BaseDataPointStreamHandler):
@@ -864,8 +878,9 @@ class InMemoryDataPointStreamHandler(BaseDataPointStreamHandler):
                 )
             )
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _initialize_trajectory(self, user: str) -> Dict[str, Any]:
         if self._exchange.client is not None:
@@ -908,7 +923,7 @@ class InMemoryDataPointStreamHandler(BaseDataPointStreamHandler):
                 # Set uuid of current 'raw' trajectory that we are building
                 self._exchange.kv_set(
                     data=serialized_data,
-                    key=self._get_key(
+                    name=self._get_key(
                         namespace=self.namespace,
                         user=user,
                         name=settings.CURRENT_TRAJECTORY_KVSTORE,
@@ -916,11 +931,13 @@ class InMemoryDataPointStreamHandler(BaseDataPointStreamHandler):
                 )
                 return data
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"dp is None!"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
 
 # TODO: Rename 'RedisDataPointStreamHandler'
@@ -973,8 +990,9 @@ class DataPointStreamHandler(BaseDataPointStreamHandler):
                 )
             )
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)
 
     def _initialize_trajectory(self, user: str) -> Dict[str, Any]:
         if self._exchange.client is not None:
@@ -1007,7 +1025,7 @@ class DataPointStreamHandler(BaseDataPointStreamHandler):
                 # Set uuid of current 'raw' trajectory that we are building
                 self._exchange.kv_set(
                     data=serialized_data,
-                    key=self._get_key(
+                    name=self._get_key(
                         namespace=self.namespace,
                         user=user,
                         name=settings.CURRENT_TRAJECTORY_KVSTORE,
@@ -1015,8 +1033,10 @@ class DataPointStreamHandler(BaseDataPointStreamHandler):
                 )
                 return data
             else:
-                logging.warning("")
-                raise ValueError("")
+                error = f"dp is None!"
+                logging.warning(error)
+                raise ValueError(error)
         else:
-            logging.warning("")
-            raise ValueError("")
+            error = f"self._exchange.client is None!"
+            logging.warning(error)
+            raise ValueError(error)

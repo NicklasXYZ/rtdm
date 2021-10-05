@@ -1,4 +1,3 @@
-# import collections
 import logging
 from typing import Any, Dict, List, Tuple, Union
 
@@ -14,21 +13,15 @@ import backend.xchanges as xchanges
 import msgpack
 import numpy as np
 
-# import folium
-# import geohash_hilbert as ghh
 import pandas as pd
 import utm
 
-# from adtk.detector import ThresholdAD
-from adtk.visualization import plot
+# from adtk.visualization import plot
 from backend.typealias import CoordinatePair, Pattern, Sequence
 
-# from prefixspan import PrefixSpan
 from Bio import pairwise2
 from django.conf import settings
 from shapely.geometry import LineString
-
-# import uuid
 
 
 class BaseDetector:
@@ -36,8 +29,8 @@ class BaseDetector:
         self.precision = precision
         self.bits_per_char = bits_per_char
         # Set constant distance delta. Over large latitudinal distances this
-        # value should be determined dynamically as the distance between geohash
-        # grid cells change w.r.t to Earth's latitude
+        # value should be determined dynamically as the distance between
+        # geohash grid cells change w.r.t to Earth's latitude
         self.distance_delta = ds.interpolation_distance_delta(
             precision=precision, bits_per_char=bits_per_char,
         )
@@ -97,16 +90,16 @@ class BaseDetector:
 
     def _to_geohash(self, coordinate: Union[CoordinatePair, pd.Series]) -> str:
         """
-        Convert a latitude, longitude coordinate pair to a geohash.
+        Convert a latitude/longitude coordinate pair to a geohash.
 
         Args:
-            coordinate (CoordinatePair): A latitude, longitude coordinate pair.
+            coordinate (CoordinatePair): A latitude/longitude coordinate pair.
 
         Raises:
-            ValueError: If required input size is wrong.
+            ValueError: If the required input size is wrong.
 
         Returns:
-            str: A geohash.
+            str: A geohash value.
         """
         if isinstance(coordinate, list):
             if not len(coordinate) == 2:
@@ -234,7 +227,8 @@ class iBDD(BaseDetector):  # noqa
 
         Note:
             Estimate the maximum allowed seperation distance between two \
-            datapoints before we classify the latest datapoint as being noisy.
+            datapoints. The maximum allowed seperation distance between two \
+            datapoints is used to classify the latest datapoint as being noisy.
 
         Args:
             data (List[float]): A list of distance deltas (distances, in \
@@ -243,7 +237,8 @@ class iBDD(BaseDetector):  # noqa
                 the mean. Defaults to 3.
 
         Returns:
-            float: The max seperation distance between two points.
+            float: An estimate of the maximum allowed seperation distance \
+                between two datapoints.
         """
         max_seperation_distance = np.mean(data) + mdeviations * np.std(data)
         return float(max_seperation_distance)
@@ -274,15 +269,6 @@ class iBDD(BaseDetector):  # noqa
             return float(sampling_rate)
 
     def update(self, datapoint: ds.DataPoint) -> Tuple[int, int]:
-        """
-        [summary]
-
-        Args:
-            datapoint (ds.DataPoint): [description]
-
-        Returns:
-            Tuple[int, int]: [description]
-        """
         new, token = self._tokenize(datapoint=datapoint)
         if new == 1 and token is not None:
             label, self.working_support = self._detection(
@@ -407,7 +393,7 @@ class iBDD(BaseDetector):  # noqa
         Given a sequence determine if it is a subsequence of a known sequence.
 
         Args:
-            sequence0 (Sequence): A historically recorded sequence.
+            sequence0 (Sequence): A known historically recorded sequence.
             sequence1 (Sequence): A new on-going sequence that we need to \
                 determine if it is a subsequence of a known sequence.
 
@@ -440,20 +426,19 @@ class iBDD(BaseDetector):  # noqa
         self, current_sequence: Sequence, support: List[Sequence]
     ) -> Tuple[float, List[Sequence]]:
         """
-        Calculate a score for the on-going trajectory and thus current sequence.
+        Calculate the support score for the on-going trajectory/sequence.
 
         Args:
             current_sequence (Sequence): An on-going trajectory that has been \
-                converted into a sequence of traversed grid cell identifiers \
-                (geohashes).
+                converted into a sequence of traversed geohash grid cells.
             support (List[Sequence]): The current set of historically recorded \
-                sequences of grid cell identifiers (geohashes) that support \
-                the current sequence.
+                sequences of geohash grid cells that support the current \
+                on-going sequence.
 
         Returns:
             Tuple[float, List[Sequence]]: The support score that determines if \
-                the on-going trajectory and thus current sequence contains \
-                disorientation behavior.
+                the on-going trajectory/sequence contains disorientation \
+                behavior.
         """
         support_set = self._find_support(current_sequence, support)
         if len(support) == 0:
@@ -479,11 +464,11 @@ class iBDD(BaseDetector):  # noqa
         Return the distance traversed by a given ordered list of datapoints.
 
         Args:
-            datapoints (List[ds.DataPoint]): A chronologically \
-                ordered list of datapoints.
+            datapoints (List[ds.DataPoint]): A chronologically ordered list of \
+                datapoints.
 
         Returns:
-            float: The distance in meters.
+            float: The distance of the path in meters.
         """
         transformed = []
         if len(datapoints) < 2:
@@ -504,8 +489,8 @@ class iBDD(BaseDetector):  # noqa
         Args:
             datapoints (List[ds.DataPoint]): A list of the latest \
                 chronologically ordered datapoints.
-            datapoint (ds.DataPoint): The datapoint we have to \
-                determine is noisy or not.
+            datapoint (ds.DataPoint): The datapoint that we have to determine \
+                is noisy or not.
 
         Returns:
             bool: Whether the given datapoint is noisy or not.
@@ -541,14 +526,17 @@ class iBDD(BaseDetector):  # noqa
         self, datapoint: ds.DataPoint
     ) -> Tuple[int, Union[None, Dict[str, Any]]]:
         """
-        Convert a new datapoint from the on-going trajectory.
+        Convert a new datapoint in an on-going trajectory to a geohash.
 
         Args:
-            datapoint (ds.DataPoint): A new datapoint, from the \
-                on-going trajectory.
+            datapoint (ds.DataPoint): A new datapoint in the on-going \
+                trajectory.
 
         Returns:
-            Tuple[int, Union[None, Dict[str, Any]]]: [description]
+            Tuple[int, Union[None, Dict[str, Any]]]: A tuple consisting of an \
+                integer value that indicates whether a new geohash grid cell \
+                is traveresed. If a new grid cell is traversed the geohash \
+                value is returned as well, otherwise it is None.
         """
         new = 0
         token = self._to_geohash([datapoint.latitude, datapoint.longitude])
@@ -584,16 +572,6 @@ class iBDD(BaseDetector):  # noqa
     def _detection(
         self, token: Dict[str, Any], working_support: List[Sequence]
     ) -> Tuple[int, List[Sequence]]:
-        """
-        [summary]
-
-        Args:
-            token (Token): [description]
-            working_support (List[Sequence]): [description]
-
-        Returns:
-            Tuple[int, List[Sequence]]: [description]
-        """
         self.working_sequence.append(token)
         temp_seq = [_["token"] for _ in self.working_sequence]
         if self.with_heuristic is True:
@@ -715,7 +693,7 @@ class iBDD(BaseDetector):  # noqa
 
     def _detect(self, df: pd.DataFrame) -> pd.DataFrame:
         # Initialize
-        data = []
+        data: List[Dict[str, Any]] = []
         self.working_support = self.support
         # Loop through the location data for each trajectory
         for _, row in df.iterrows():
@@ -825,14 +803,14 @@ class DisorientationDetector(BaseDetector):
             uid="placeholder",
         )
 
-    def plot_score(self, df: pd.DataFrame, anomalies: pd.DataFrame) -> Any:
-        return plot(
-            df,
-            anomaly=anomalies,
-            ts_linewidth=1,
-            ts_markersize=5.0,
-            anomaly_color="red",
-        )
+    # def plot_score(self, df: pd.DataFrame, anomalies: pd.DataFrame) -> Any:
+    #     return plot(
+    #         df,
+    #         anomaly=anomalies,
+    #         ts_linewidth=1,
+    #         ts_markersize=5.0,
+    #         anomaly_color="red",
+    #     )
 
     def _check_vars(self) -> None:
         """Check and validate all class arguments on class instantiation."""
@@ -862,20 +840,26 @@ class DisorientationDetector(BaseDetector):
         self, trajectories: List[ds.Trajectory]
     ) -> Tuple[pd.DataFrame, List[Sequence]]:
         """
+        Process a list of trajectories in bulk by turning them into sequences.
 
         Note:
-            Assume that a complete data set is given such that trajectory \
-            data can be processed in bulk: Segmented trajectories are given as \
+            Assume that a complete dataset is given such that trajectory data \
+            can be processed in bulk: Segmented trajectories are given as \
             input and can be processed one at a time. We only need to do a \
             single pass over each trajectory and do not need to store any \
             temporary data.
 
         Args:
-            df (pd.DataFrame): [description]
+            trajectories (List[ds.Trajectory]): A list of trajectories to \
+                process.
 
         Returns:
-            Tuple[pd.DataFrame, List[Sequence]]: [description]
+            Tuple[pd.DataFrame, List[Sequence]]: A tuple consisting of a \
+                dataframe that contains all the trajectory data. A database \
+                of the trajectories that have been turned into geohash \
+                sequences are returned as well.
         """
+
         database = []
         traj_df = None
         for trajectory in trajectories:
@@ -898,104 +882,38 @@ class DisorientationDetector(BaseDetector):
                 traj_df = traj_df.append(df, verify_integrity=True)
         return traj_df, database
 
-    # def _process_detect(self, df: pd.DataFrame) -> pd.DataFrame:
-    #     """[summary]
-
-    #     Args:
-    #         df (pd.DataFrame): [description]
-
-    #     Returns:
-    #         Tuple[pd.DataFrame, List[Sequence]]: [description]
-    #     """
-    #     # Keep a list of the results produced at every step
-    #     data_ = []
-    #     for _, df_ in df.groupby("uid"):
-    #         # Instantiate a variable that can be used to keep track of the
-    #         # current smallest sequence similarity score. This score is used
-    #         # to caclulate an anomaly score
-    #         min_score = np.inf
-    #         # Use the 'external_timestamp' column as the row index
-    #         temp_df = df_.set_index("external_timestamp")
-    #         # Process a new trajectory contained in a dataframe in
-    #         # an 'online' fashion
-    #         for window in temp_df.rolling(self.window_size):
-    #             geohashed_sequence = window.apply(
-    #                 self._to_geohash,
-    #                 axis = 1,
-    #                 args = (),
-    #             )
-    #             # NOTE:
-    #             ###
-    #             # Method 1: Remove identical geohash values and keep only the
-    #             # FIRST occurrence.
-    #             ###
-    #             # sequence = geohashed_sequence.loc[
-    #             #     geohashed_sequence.shift() != geohashed_sequence
-    #             # ].values
-    #             ###
-    #             # Method 2: Remove identical geohash values and keep only the
-    #             # LAST occurrence.
-    #             ###
-    #             sequence = geohashed_sequence.loc[
-    #                 geohashed_sequence.shift(-1) != geohashed_sequence
-    #             ].values
-    #             if len(sequence) > 1:
-    #                 sequence, _ = self.sequence_interpolator.\
-    #                     _interpolate_geohash_sequence(
-    #                         sequence = sequence,
-    #                         distance_delta = self.distance_delta,
-    #                         precision = self.precision,
-    #                         bits_per_char = self.bits_per_char,
-    #                 )
-    #             sequence_score = self.score_sequence(sequence, self.support)
-    #             if sequence_score <= min_score:
-    #                 min_score = sequence_score
-    #             anomaly_score = 1.0 - min_score
-    #             anomaly = False
-    #             if anomaly_score > self.threshold_high:
-    #                 anomaly = True
-    #             dict_ = {
-    #                 "external_timestamp": window.index[-1],
-    #                 "sequence": sequence,
-    #                 "sequence_score": sequence_score,
-    #                 "anomaly_score": anomaly_score,
-    #                 "anomaly": anomaly,
-    #                 "latitude": window["latitude"].values[-1],
-    #                 "longitude": window["longitude"].values[-1],
-    #                 "uid": window["uid"].values[-1],
-    #             }
-    #             data_.append(dict_)
-    #     return pd.DataFrame(data = data_)
-
     def _process_detect(
         self, trajectories: List[ds.Trajectory]
     ) -> pd.DataFrame:
         """
-        [summary]
+        Determine the trajectories contained in a list are anomalous.
 
         Args:
-            df (pd.DataFrame): [description]
+            trajectories (List[ds.Trajectory]): A list of trajectories to \
+                process and detect anomalies in.
 
         Returns:
-            Tuple[pd.DataFrame, List[Sequence]]: [description]
+            pd.DataFrame: A pandas dataframe containing the anomaly detection \
+                results.
         """
         for trajectory in trajectories:
             exchange = xchanges.InMemoryMessageExchangeWrapper()
             f1 = seqscorer.ScoringFunction(pairwise2.align.localxx)
             fns = {"f1": (f1, 1.00)}
-            # TODO: Class also instantiated in __init__ method and not used!
+            # TODO: Object also instantiated in __init__ method and not used!
             scorer = seqscorer.ExtendedInMemorySequenceScorer(
                 **{"exchange": exchange, "fns": fns}
             )
             scorer._add_support(
-                key=scorer.get_key(
+                name=scorer.get_key(
                     obj_type="support", uid="testing"
-                ),  # TODO: UID, find better name
+                ),  # TODO: Find a better name for arg 'uid'
                 support=msgpack.dumps(self.support),
             )
             data = dfinterfaces.ScoringDataFrame.handle(
                 exchange=exchange,
-                user="testing",  # TODO: Use better name
+                # TODO: Find a better name for arg 'user'
+                user="testing",
                 ss=scorer,
                 datapoints=trajectory.datapoints,
                 precision=self.precision,
@@ -1004,7 +922,7 @@ class DisorientationDetector(BaseDetector):
             )
             df = data["dataframe"]
             df["uid"] = trajectory.uid
-        return df  # TODO: what if None
+        return df  # TODO: What if None?
 
     def _extract_support(
         self,
@@ -1014,6 +932,7 @@ class DisorientationDetector(BaseDetector):
         generator: bool = False,
     ) -> List[Pattern]:
         return self.scorer._create_support(
+            # TODO: Find a better name for arg 'uid'
             uid="placeholder",
             sequences=database,
             min_frequency=min_frequency,
@@ -1100,8 +1019,8 @@ def bulk_insert_datapoint(
             )
         _ = pipe.execute()
     else:
-        logging.warning("")
-        raise ValueError("")
+        logging.warning("Object exchange.client is None!")
+        raise ValueError("Object exchange.client is None!")
 
 
 def bulk_process_datapoint(

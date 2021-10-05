@@ -5,11 +5,11 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple, Union
 
-import redis  # pip install redis-py
+import redis  # pip install redis
 
 # Variables used for internal namespacing in class 'InMemoryMessageExchange'.
-# They are necessary for distinguishing between kv store operations and queue
-# operations
+# These variables are necessary for distinguishing between key-value store
+# operations and queue operations
 KVSTORE_IDENTIFIER: str = "kvstore"
 QUEUE_IDENTIFIER: str = "queue"
 
@@ -30,8 +30,8 @@ class RedisMessageExchange:
         Args:
             host (str, optional): The service name or address of where Redis \
                 is running. Defaults to "localhost".
-            port (str, optional): The port number of the address where Redis \
-                is running. Defaults to "6379".
+            port (int, optional): The port number of the address where Redis \
+                is running. Defaults to 6379.
             db (int, optional): The index of the Redis database that should \
                 be used. Defaults to 1.
             timeout (int, optional): An upper bound on the amount of time we \
@@ -42,7 +42,7 @@ class RedisMessageExchange:
             wait_time (float, optional): The time between trying to SET or GET \
                 values in the Redis KV store. Defaults to 0.001.
         """
-        # Redis KV store connection info
+        # Redis connection info
         self.host = host
         self.port = port
         self.db = db
@@ -50,12 +50,12 @@ class RedisMessageExchange:
         self.server_down: bool = True
         # The upper bound on number of re-tries
         self.max_try = max_try
-        # The waiting time between re-tries, when processing data
+        # The waiting time between re-tries, when consuming/processing data
         self.wait_time = wait_time
         # The timeout value used when trying to retrieve a value from Redis
         self.timeout = timeout
-        # The backoff counter used to increase the waiting time
-        # between re-triees, when trying to re-connect to Redis
+        # The backoff counter used to increase the waiting time between
+        # re-triees, when trying to re-connect to Redis
         self.backoff: int = 0
         # The client connection
         self.client: Union[None, redis.Redis] = None
@@ -102,19 +102,20 @@ class RedisMessageExchange:
 
         Returns:
             bool: A boolean value that signals whether it was possible to \
-                connect to Redis.
+                connect to Redis or not. True if successful, otherwise False.
         """
         connection_string = (
             str(self.host) + ":" + str(self.port) + "/" + str(self.db)
         )
-        # Assume we are not able to connect.
-        # This flag is set to 'True' if we are able to connect successfully.
+        # Assume we are not able to connect, so set 'return_value' flag to False
+        # If we are able to connect successfully then the flag is et to True
         return_value = False
         while self.server_down:
             try:
                 self._connect()
                 self.server_down = False
-                self.backoff = 0  # Reset the backoff value
+                # Reset the backoff value
+                self.backoff = 0
                 logging.debug(
                     f"Client connection to {connection_string} is up!"
                 )
@@ -122,15 +123,14 @@ class RedisMessageExchange:
                 break
             except redis.exceptions.ConnectionError:
                 self.server_down = True
-                # After each connection retry increase the backoff value
+                # After each connection re-try increase the backoff value
                 self.backoff += 1
-                # Increase the waiting time before we try to reconnect to the
-                # Redis KV store.
+                # Increase the waiting time before we try to reconnect to Redis
                 sleep_time = 3 * self.backoff
                 time.sleep(sleep_time)
                 logging.debug(
-                    f"Cannot connect to {connection_string} trying again "
-                    + f"in {sleep_time} seconds..."
+                    f"Cannot connect to {connection_string} trying again \
+                    in {sleep_time} seconds..."
                 )
             if self.backoff == self.max_try:
                 logging.debug(
@@ -149,7 +149,8 @@ class RedisMessageExchange:
                 work so raise a Redis 'ConnectionError'.
 
         Returns:
-            bool: In case the reconnection attempt succeeded then return 'True'.
+            bool: In case the reconnection attempt succeeded then return
+                True, otherwise False.
         """
         # After 3 seconds try to re-connect...
         time.sleep(3)
@@ -170,34 +171,33 @@ class RedisMessageExchange:
     def kv_set(
         self,
         data: Any,
-        key: str,
+        name: str,
         ttl: Union[None, int] = None,
         timeout: Union[None, float] = None,
     ) -> bool:
         """
-        SET data in Redis.
+        SET/store given data in Redis.
 
         Args:
-            data (Any): The data that should be SET in Redis and that also \
-                contains a unique identifier 'message_uuid' that can be used \
-                to retrieve a possible result.
-            key (str): The key that the data should be associated with.
+            data (Any): The data that should be SET/stored in Redis and that \
+                also contains a unique identifier 'message_uuid' that can be \
+                used to retrieve a possible result.
+            name (str): The name the data should be associated with.
             ttl (Union[None, int], optional): The time before the data is \
-                automatically expired. Defaults to None.
+                automatically expired and removed from Redis. Defaults to None.
             timeout (Union[None, float], optional): An upper bound on the \
                 amount of time we are prepared to wait on the retrieval of \
                 a value before we return with an error. Defaults to None.
 
         Raises:
-            TypeError: If the 'ttl' is not None or an integer value.
+            TypeError: If the ttl value is not None or an integer value.
         """
         if timeout is None:
             timeout = self.timeout
         value_added = False
         if ttl is not None and ttl is not isinstance(ttl, int):
-            error = (
-                f"ARG 'ttl' is of type {type(ttl)} but should be of type 'int'!"
-            )
+            error = f"ARG 'ttl' is of type {type(ttl)} but should be of type \
+                'int'!"
             try:
                 ttl = int(ttl)
             except Exception:
@@ -206,31 +206,31 @@ class RedisMessageExchange:
         while True:
             try:
                 if self.client is not None:
-                    return_code = self.client.set(key, data, ex=ttl,)
+                    return_code = self.client.set(name, data, ex=ttl)
                     if return_code is True:
                         value_added = True
                         break
                 else:
-                    logging.warning("Attribute 'client' is None.")
+                    logging.warning("Object attribute 'client' is None.")
             except redis.exceptions.ConnectionError:
                 # Try to fix the connection
                 self.reset_connection()
             if datetime.utcnow() - start_time > timedelta(seconds=self.timeout):
                 logging.debug(
-                    f"Waited {timeout} seconds. No message was set in Redis!"
+                    f"Waited {timeout} seconds. No data was set in Redis!"
                 )
                 break
             time.sleep(self.wait_time)
         return value_added
 
     def kv_get(
-        self, key: str, timeout: Union[None, float] = None,
+        self, name: str, timeout: Union[None, float] = None,
     ) -> Union[None, Any]:
         """
-        GET data in Redis.
+        GET/retrieve data from Redis.
 
         Args:
-            key (str): The key that the data is associated with.
+            name (str): The name the requested data is associated with.
             timeout (Union[None, float], optional): An upper bound on the \
                 amount of time we are prepared to wait on the retrieval of \
                 a value before we return with an error. Defaults to None.
@@ -246,11 +246,11 @@ class RedisMessageExchange:
         while True:
             try:
                 if self.client is not None:
-                    response = self.client.get(key,)  # noqa
+                    response = self.client.get(name)  # noqa
                     if response is not None:
                         break
                 else:
-                    logging.warning("Attribute 'client' is None.")
+                    logging.warning("Object attribute 'client' is None!")
             except redis.exceptions.ConnectionError:
                 # Try to fix the connection
                 self.reset_connection()
@@ -263,7 +263,7 @@ class RedisMessageExchange:
         return response
 
     def _connect(self) -> None:
-        """Internal method to check if the connection to Redis is working."""
+        """Internal method to check for a working connection to Redis."""
         self.client = redis.Redis(host=self.host, port=self.port, db=self.db)
         logging.debug("Pinging the Redis server...")
         while True:
@@ -286,9 +286,8 @@ class RedisMessageExchangeWrapper(RedisMessageExchange):
         Initialize and set given class variables on class instantiation.
 
         Args:
-            namespace (str, optional): The namespace used to form a unique key
-                for the list/queue. The unique key is used to access the \
-                list/queue. Defaults to "queue".
+            namespace (str, optional): The namespace used to form a unique key \
+                associated with a list/queue in Redis. Defaults to "queue".
         """
         # Set the queue namespace
         self.namespace = namespace
@@ -306,31 +305,33 @@ class InMemoryMessageExchangeWrapper:
 
     # Wrap kv store operations
 
-    def kv_set(self, key: str, data: Any, *args: Tuple, **kwargs: Dict) -> bool:
+    def kv_set(
+        self, name: str, data: Any, *args: Tuple, **kwargs: Dict
+    ) -> bool:
         """
-        SET data in memory.
+        SET/store data in memory.
 
         Args:
-            data (Any): The data that should be SET in memory and that also \
-                contains a unique identifier 'message_uuid' that can be used \
-                to retrieve a possible result.
-            key (str): The key that the data should be associated with.
+            data (Any): The data that should be SET/stored in memory and that
+                also contains a unique identifier 'message_uuid' that can be
+                used to retrieve a possible result.
+            name (str): The name the data should be associated with.
         """
-        return self.client.kv_set(key, data)
+        return self.client.kv_set(name, data)
 
     def kv_get(
-        self, key: str, *args: Tuple, **kwargs: Dict
+        self, name: str, *args: Tuple, **kwargs: Dict
     ) -> Union[None, Any]:
         """
-        GET data from memory.
+        GET/Retrieve data from memory.
 
         Args:
-            key (str): The key that the data is associated with.
+            name (str): The name that the data is associated with.
 
         Returns:
-            Any: The data retrieved from memory.
+            Any: The data retrieved from memory, otherwise None.
         """
-        return self.client.kv_get(key)
+        return self.client.kv_get(name)
 
 
 class InMemoryMessageExchange:
@@ -338,19 +339,23 @@ class InMemoryMessageExchange:
 
     def __init__(self):
         """Initialize and set given class variables on class instantiation."""
+        # Dictionary containing lists/queues organized under unique keys
+        # constructed using namespace 'QUEUE_IDENTIFIER' and a given name
         self.qs: Dict[str, Any] = {}
+        # Dictionary containing arbitrary string/byte data organized under
+        # unique keys using namespace 'KVSTORE_IDENTIFIER' and a given name
         self.kvs: Dict[str, Any] = {}
 
     def delete(self, name: str) -> bool:
         """
-        Delete the data associated with a certain name.
+        Delete data associated with a certain name.
 
         Args:
             name (str): The name that is associated with certain data stored \
                 in memory.
 
         Returns:
-            int: 1 if the data was deleted successfully, otherwise 0.
+            int: True if the data was deleted successfully, otherwise False.
         """
         if self._name_is_present(name=name, ds=QUEUE_IDENTIFIER):
             key = self._get_key(name, QUEUE_IDENTIFIER)
@@ -367,7 +372,7 @@ class InMemoryMessageExchange:
 
     def exists(self, name: str) -> bool:
         """
-        Check if a certain key specified by a name exists.
+        Check if data is stored in memory under a certain name.
 
         Args:
             name (str): The name that is associated with certain data stored \
@@ -397,7 +402,7 @@ class InMemoryMessageExchange:
 
         Returns:
             Union[None, List[Any]]: A slice of the list/queue 'name' between a \
-                'start' and 'end' index.
+                'start' and an 'end' index.
         """
         key = self._get_key(name, QUEUE_IDENTIFIER)
         if self._name_is_present(name=name, ds=QUEUE_IDENTIFIER):
@@ -414,7 +419,7 @@ class InMemoryMessageExchange:
         Return the length of a list/queue.
 
         Args:
-            name (str): The name of the list/queue.
+            name (str): The name of the list/queue that is stored in memory.
 
         Returns:
             int: The length of the list/queue.
@@ -427,10 +432,10 @@ class InMemoryMessageExchange:
 
     def lindex(self, name: str, index: int) -> Union[None, Any]:
         """
-        Return an element from a list/queue at a certain position.
+        Return an element at a certain position from a list/queue.
 
         Args:
-            name (str): The name of the list/queue.
+            name (str): The name of the list/queue that is stored in memory.
             index (int): The index of the element in a list/queue to retrieve. \
                 Negative indices are supported and will return an element \
                 starting at the end of the list/queue.
@@ -462,9 +467,8 @@ class InMemoryMessageExchange:
         Push an element onto the tail of the list/queue.
 
         Args:
-            name (str): The name of the list/queue.
-            value (Any): The element to add onto the tail of the \
-                list/queue.
+            name (str): The name of the list/queue that is stored in memory.
+            value (Any): The element to add onto the tail of the list/queue.
 
         Returns:
             int: The new number of elements in the list/queue.
@@ -485,7 +489,7 @@ class InMemoryMessageExchange:
         Remove and return the last element of the list/queue.
 
         Args:
-            name (str): The name of the list/queue.
+            name (str): The name of the list/queue that is stored in memory.
 
         Returns:
             Union[None, Any]: The last element of the list/queue that was \
@@ -506,7 +510,7 @@ class InMemoryMessageExchange:
         Remove and return the first element of the list/queue.
 
         Args:
-            name (str): The name of the list/queue.
+            name (str): The name of the list/queue that is stored in memory.
 
         Returns:
             Union[None, Any]: The first element of the list/queue that was \
@@ -522,44 +526,45 @@ class InMemoryMessageExchange:
         else:
             return None
 
-    def lset(self, name: str, index: int, value: Any,) -> Union[None, int]:
+    def lset(self, name: str, index: int, value: Any,) -> Union[None, bool]:
         """
-        If possible, set an element at a certain position in the list/queue.
+        Set an element at a certain position in the list/queue.
 
         Args:
-            name (str): The name of the list/queue.
-            index (int): The position in the list/queue that should be updated/\
-                overwritten.
-            value (Any): The data that should be set/stored at a \
-                certain position in the list/queue.
+            name (str): The name of the list/queue that is stored in memory.
+            index (int): The position in the list/queue that should be updated \
+                or overwritten.
+            value (Any): The data that should be set/stored at a certain \
+                position in the list/queue.
 
         Returns:
-            Union[None, int]:
+            Union[None, bool]: True if the new value was set/stored \
+                successfully at the given index, otherwise False. None is \
+                returned if no queue/list exists with the given name.
         """
         key = self._get_key(name, QUEUE_IDENTIFIER)
         if self._name_is_present(name=name, ds=QUEUE_IDENTIFIER):
             try:
                 self.qs[key][index] = value
-                return 1
+                return True
             except IndexError:
-                return 0
+                return False
         else:
             return None
 
     def kv_set(self, name: str, value: Any) -> bool:
         """
-        Set an element in memory using a certain name/key.
+        Set an element in memory using a certain name.
 
         Args:
-            name (str): The name a given element should be associated with \
-                set under.
+            name (str): The name a given element should be associated with and \
+                set under in memory.
             value (Any): The element to set/store in memory.
 
         Returns:
             bool: True if the element was set/stored successfully, otherwise \
                 False.
         """
-
         key = self._get_key(name, KVSTORE_IDENTIFIER)
         self.kvs[key] = value
         return True
@@ -569,12 +574,12 @@ class InMemoryMessageExchange:
         Return the element associated with a certain name.
 
         Args:
-            name (str): The name/key associated with the element that is to be \
+            name (str): The name associated with the element that is to be \
                 retrieved from memory.
 
         Returns:
-            Union[None, Any]: The element associated with the given name/key \
-                or None if the name/key doesn't exist
+            Union[None, Any]: The element associated with the given name \
+                or None if the name doesn't exist.
         """
         key = self._get_key(name, KVSTORE_IDENTIFIER)
         if self._name_is_present(name=name, ds=KVSTORE_IDENTIFIER):
@@ -612,7 +617,7 @@ class InMemoryMessageExchange:
         else:
             raise ValueError(
                 f"Specified datastructure: {ds} not known. Choose either \
-                'kvstore' or 'queue'.",
+                '{KVSTORE_IDENTIFIER}' or '{QUEUE_IDENTIFIER}'.",
             )
 
     def _adjust_indices(
@@ -621,18 +626,20 @@ class InMemoryMessageExchange:
         """
         An internal method that is used to map negative indices to positive.
 
-        This method is used to map negative indices to positive indices, so \
-        that we can slice an iterator efficiently. It is not possible to slice \
-        a 'collections.deque' object using negative indices. This method \
-        implements this functionality.
+        Note:
+            This method is used to map negative indices to positive indices, \
+            so that we can slice an iterator efficiently. It is not possible \
+            to slice a 'collections.deque' object using negative indices. \
+            This method implements this functionality.
 
         Args:
             start (int): Start index.
             end (int): End index.
-            qlen (int): The length of a certain list/queue.
+            qlen (int): The length of a list/queue.
 
         Returns:
-            Union[List, Tuple[int, int]]: Adjusted indices.
+            Union[List, Tuple[int, int]]: Adjusted indices that can be used \
+                with a 'collection.dequeue' object.
         """
         # -> Handle edge cases first
         if start >= qlen:
@@ -671,6 +678,7 @@ class Pipeline:
 
     def __init__(self, queue: InMemoryMessageExchange) -> None:
         self.queue = queue
+        # A list of operations in chronological order
         self.operations: List[Tuple[str, Any]] = []
 
     def delete(self, name: str) -> None:
