@@ -1,3 +1,4 @@
+import pickle
 import os
 import sys
 
@@ -7,7 +8,6 @@ if module_path not in sys.path:
 
 from stream_handler import setup
 setup()
-import pickle
 
 import backend.detectorevaluator as evaluator
 import backend.geohashsequenceinterpolator as ip
